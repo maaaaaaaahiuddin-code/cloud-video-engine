@@ -9,17 +9,15 @@ import textwrap
 import requests
 import subprocess
 
-# Auto-install required packages (including misaki[ja] and unidic-lite for native G2P)
+# Auto-install required packages if missing in workflow YAML
 try:
     import soundfile as sf
     import numpy as np
     from kokoro_onnx import Kokoro
-    import misaki
 except ImportError:
     subprocess.run([
         sys.executable, "-m", "pip", "install",
-        "kokoro-onnx", "soundfile", "numpy", "fonttools",
-        "misaki[ja]", "unidic-lite", "phonemizer-fork", "edge-tts", "gTTS"
+        "kokoro-onnx", "soundfile", "numpy", "fonttools", "edge-tts", "gTTS"
     ], check=True)
     import soundfile as sf
     import numpy as np
@@ -102,14 +100,125 @@ NICHE_AUDIO_MAP = {
     "solitude": "quiet night wind crickets calm ambient"
 }
 
-# Native Kokoro-82M Language & Voice Mapping (All inside voices-v1.0.bin)
-LANGUAGE_MAP = {
-    "french":     {"lang": "fr-fr", "native_voice": "ff_siwis"},
-    "spanish":    {"lang": "es",    "native_voice": "ef_dora"},
-    "italian":    {"lang": "it",    "native_voice": "if_sara"},
-    "japanese":   {"lang": "ja",    "native_voice": "jf_alpha"},
-    "portuguese": {"lang": "pt-br", "native_voice": "pf_dora"},
-    "hindi":      {"lang": "hi",    "native_voice": "hf_alpha"},
+# Smooth Acoustic Phonetic Map for all 100 words in words_of_the_world_video_sheet.xlsx
+# Engineered specifically so 55% af_nicole + 45% af_heart (en-us) pronounces every word
+# smoothly and accurately in one continuous sentence without ever switching voices.
+SMOOTH_SPOKEN_MAP = {
+    # French (17)
+    "Dépaysement": "daypaizmahn",
+    "Retrouvailles": "ruhtroovigh",
+    "Sillage": "seeyahzh",
+    "L'esprit de l'escalier": "lespree duh leskahlyay",
+    "Coup de foudre": "koo duh foodruh",
+    "Lâcher prise": "lahshay preez",
+    "Tu me manques": "too muh mahnk",
+    "Épanouissement": "aypahnweesmahn",
+    "Douceur de vivre": "doosur duh veevruh",
+    "Chagrin": "shahgran",
+    "Ennui": "ahnwee",
+    "Apaisement": "ahpaizmahn",
+    "Tendresse": "tahndress",
+    "Souvenir": "soovuhneer",
+    "Âme sœur": "ahm sur",
+    "Éphémère": "ayfehmair",
+    "Au revoir": "oh ruhvwar",
+
+    # Spanish (17)
+    "Sobremesa": "sohbreh mehsah",
+    "Duende": "dwenday",
+    "Querencia": "kehrenseeah",
+    "Anhelo": "ahnehloh",
+    "Desvelo": "desvehloh",
+    "Ojalá": "oh hahlah",
+    "Madrugada": "mahdroogahdah",
+    "Alma gemela": "ahlmah hehmehlah",
+    "Corazonada": "kohrahsohnahdah",
+    "Desahogo": "desah ohgoh",
+    "Aguante": "ahgwahntay",
+    "Amanecer": "ahmahnehser",
+    "Echar de menos": "ehchar day mehnohs",
+    "Ilusión": "eeloosyohn",
+    "Despedida": "despehdeedah",
+    "Soledad": "sohlehdahd",
+    "Empezar de cero": "empehsar day sehroh",
+
+    # Italian (17 + inline words)
+    "Dolce far niente": "dohlchay far nyentay",
+    "Sprezzatura": "spretsahtoorah",
+    "Ti voglio bene": "tee vohlyoh behnay",
+    "Struggimento": "stroodjeementoh",
+    "Meraviglia": "mehrahveelyah",
+    "Rimpianto": "reempyahntoh",
+    "Cogli l'attimo": "kohlyee lahteemoh",
+    "Pazienza": "pahtsyentsah",
+    "Rinascita": "reenahsheetah",
+    "Smarrimento": "zmahreementoh",
+    "Insieme": "eensyehmay",
+    "Fidarsi": "feedarsee",
+    "Coraggio": "kohrahdjoh",
+    "cuore": "kwohray",
+    "Disgelo": "deezjehloh",
+    "Speranza": "spehrahntsah",
+    "Incanto": "eenkahntoh",
+    "Ritrovarsi": "reetrohvarsee",
+
+    # Japanese (17)
+    "木漏れ日": "komorebi",
+    "一期一会": "icheego icheeay",
+    "侘び寂び": "wahbee sahbee",
+    "物の哀れ": "mohno no ahwahray",
+    "生き甲斐": "eekeegigh",
+    "懐かしい": "nahtsookahshee",
+    "七転び八起き": "nahnah kohrobee yah ohkee",
+    "切ない": "setsoonigh",
+    "面影": "ohmohkahgay",
+    "以心伝心": "eesheen densheen",
+    "初心": "shohsheen",
+    "儚い": "hahkahnigh",
+    "余韻": "yoheen",
+    "絆": "keezoonah",
+    "見守る": "meemahmohroo",
+    "遠回り": "tohmahwahree",
+    "有り難う": "ahreegahtoh",
+
+    # Portuguese (16 + inline words)
+    "Saudade": "sowdahjee",
+    "Cafuné": "kahfooneh",
+    "Desabafar": "dehzahbahfar",
+    "Aconchego": "ahkohnshaygoh",
+    "Companheiro": "kohmpahnyayroh",
+    "com pão": "kohm pown",
+    "Amor próprio": "ahmor prohpreeoh",
+    "Desenrascanço": "dezenrahskahnsoh",
+    "Mágoa": "mahgwah",
+    "Desassossego": "dehzahsohsaygoh",
+    "Sossego": "sohsaygoh",
+    "Dengo": "dengoh",
+    "Fôlego": "fohlehgoh",
+    "Gratidão": "grahcheedown",
+    "Perdoar": "perdohar",
+    "Adeus": "ahdayoos",
+    "a Deus": "ah dayoos",
+    "Lembrança": "lembrahnsah",
+    "lembranças": "lembrahnsahs",
+
+    # Hindi (16)
+    "इंतज़ार": "intehzaar",
+    "बिछोह": "beechoh",
+    "सुकून": "sookoon",
+    "तलाश": "tuhlaash",
+    "हौसला": "hawslah",
+    "अपनापन": "upnahpun",
+    "सब्र": "subruh",
+    "ठहराव": "tehraav",
+    "फ़िक्र": "fikruh",
+    "अधूरा": "uhdhoorah",
+    "संजोना": "sunjohnah",
+    "मरहम": "murhum",
+    "निभाना": "nibhaanah",
+    "कशिश": "kushish",
+    "तन्हाई": "tunhaaee",
+    "उम्मीद": "oomeed"
 }
 
 
@@ -200,26 +309,6 @@ def get_font_for_text(line_text):
     return "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf"
 
 
-def detect_target_language(title_str, overlay_str, caption_str):
-    """Detects which of the 6 native languages is featured in this row."""
-    combined = f"{overlay_str}\n{caption_str}".lower()
-    for lang_name, cfg in LANGUAGE_MAP.items():
-        if (
-            f"in {lang_name}" in combined
-            or f"| {lang_name}" in combined
-            or f"{lang_name} has a word" in combined
-            or f"#{lang_name}words" in combined
-        ):
-            return lang_name, cfg["lang"], cfg["native_voice"]
-
-    if re.search(r'[\u3040-\u30ff\u4e00-\u9fff]', f"{title_str} {overlay_str}"):
-        return "japanese", "ja", "jf_alpha"
-    if re.search(r'[\u0900-\u097f]', f"{title_str} {overlay_str}"):
-        return "hindi", "hi", "hf_alpha"
-
-    return "english", "en-us", "af_heart"
-
-
 def prepare_poetic_lines(title_text, body_text):
     """
     Formats:
@@ -303,202 +392,65 @@ def get_duration(filename):
         return 10.0
 
 
-def phonemize_native_kokoro(word_text, lang_code):
+def prepare_spoken_script(title_str, overlay_str, caption_str):
     """
-    Uses Kokoro-82M's official Misaki G2P engine (JAG2P for Japanese Kanji/Kana,
-    EspeakG2P for French, Spanish, Italian, Portuguese, and Hindi) so non-English words
-    are converted into authentic native Kokoro IPA phonemes instead of English phonemes.
+    Replaces foreign words in the spoken voiceover script ONLY (leaving on-screen visual text untouched)
+    so the Grade-A 55% af_nicole + 45% af_heart English voice reads the entire quote in one seamless breath
+    with natural native pronunciation.
     """
-    clean_w = word_text.strip()
-    if not clean_w:
-        return ""
+    spoken = overlay_str.replace("…", ", ").replace("...", ", ")
 
-    # Append sentence-final punctuation so Kokoro uses natural falling cadence on single words
-    punct_w = clean_w if clean_w[-1] in ".!?。！？" else (clean_w + "。" if lang_code == "ja" else clean_w + ".")
+    # 1. Replace mapped foreign words (longest phrases first)
+    for word, phonetic in sorted(SMOOTH_SPOKEN_MAP.items(), key=lambda x: len(x[0]), reverse=True):
+        if word in spoken:
+            spoken = spoken.replace(word, phonetic)
 
-    # 1. Japanese Native G2P via Misaki JAG2P (Kanji/Kana -> Pitch-Accented Japanese IPA)
-    if lang_code == "ja":
-        try:
-            from misaki.ja import JAG2P
-            g2p_ja = JAG2P()
-            res = g2p_ja(punct_w)
-            phonemes = res[0] if isinstance(res, tuple) else str(res)
-            if phonemes and phonemes.strip():
-                print(f"Native Japanese G2P ['{clean_w}'] -> IPA: {phonemes}")
-                return phonemes.strip()
-        except Exception as e_ja:
-            print(f"Misaki JAG2P warning: {e_ja}")
+    # 2. Automatic fallback for any new Japanese/Hindi row using parenthesized reading in Caption
+    clean_title = (title_str or "").strip()
+    if clean_title and clean_title in spoken and clean_title not in SMOOTH_SPOKEN_MAP:
+        first_line = caption_str.splitlines()[0] if caption_str else ""
+        m = re.search(r'\(([^)]+)\)', first_line)
+        if m:
+            spoken = spoken.replace(clean_title, m.group(1).strip())
 
-    # 2. Romance & Hindi Native G2P via Misaki EspeakG2P ('fr-fr', 'es', 'it', 'pt-br', 'hi')
-    try:
-        from misaki.espeak import EspeakG2P
-        g2p_espeak = EspeakG2P(language=lang_code)
-        res = g2p_espeak(punct_w)
-        phonemes = res[0] if isinstance(res, tuple) else str(res)
-        if phonemes and phonemes.strip():
-            print(f"Misaki Native G2P [{lang_code} '{clean_w}'] -> IPA: {phonemes}")
-            return phonemes.strip()
-    except Exception as e_misaki:
-        print(f"Misaki EspeakG2P warning ({lang_code}): {e_misaki}")
-
-    # 3. Direct system espeak-ng IPA fallback
-    try:
-        ipa_out = subprocess.check_output(
-            ["espeak-ng", "-q", "--ipa", "-v", lang_code, punct_w],
-            text=True
-        ).strip()
-        if ipa_out:
-            print(f"espeak-ng Native IPA [{lang_code} '{clean_w}'] -> {ipa_out}")
-            return ipa_out
-    except Exception as e_esp:
-        print(f"System espeak-ng fallback warning: {e_esp}")
-
-    return ""
-
-
-def match_rms_and_fade(target_audio, reference_audio, sr=24000):
-    """
-    Matches the RMS loudness of the native word to the surrounding English narrator
-    and applies a 15ms cosine fade-in/out so the voice transition is completely seamless.
-    """
-    if target_audio is None or len(target_audio) == 0:
-        return target_audio
-
-    audio = target_audio.astype(np.float32)
-    ref_rms = np.sqrt(np.mean(reference_audio.astype(np.float32) ** 2)) if (reference_audio is not None and len(reference_audio) > 400) else 0.08
-    tgt_rms = np.sqrt(np.mean(audio ** 2))
-
-    if tgt_rms > 1e-4 and ref_rms > 1e-4:
-        gain = np.clip(ref_rms / tgt_rms, 0.65, 1.55)
-        audio = audio * gain
-
-    fade_len = min(int(sr * 0.015), len(audio) // 4)
-    if fade_len > 1:
-        fade_in = np.linspace(0.0, 1.0, fade_len, dtype=np.float32)
-        fade_out = np.linspace(1.0, 0.0, fade_len, dtype=np.float32)
-        audio[:fade_len] *= fade_in
-        audio[-fade_len:] *= fade_out
-
-    return np.clip(audio, -0.98, 0.98)
-
-
-def synthesize_native_word(kokoro, word_text, native_voice_vec, lang_code, speed=0.78):
-    """
-    Synthesizes the foreign Title word using:
-      1) Official Misaki native IPA phonemes + is_phonemes=True
-      2) 90% Native Speaker Vector + 10% af_nicole ASMR whisper vector
-    """
-    phonemes = phonemize_native_kokoro(word_text, lang_code)
-    if phonemes:
-        try:
-            # Filter phonemes to valid Kokoro vocab tokens if vocab attribute is exposed
-            if hasattr(kokoro, "tokenizer") and hasattr(kokoro.tokenizer, "vocab"):
-                vocab = kokoro.tokenizer.vocab
-                filtered_p = "".join(c for c in phonemes if c in vocab).strip()
-                if filtered_p:
-                    phonemes = filtered_p
-
-            samples, sr = kokoro.create(
-                phonemes,
-                voice=native_voice_vec,
-                speed=speed,
-                lang=lang_code,
-                is_phonemes=True
-            )
-            if samples is not None and len(samples) > 400:
-                return samples, sr
-        except Exception as e_ph:
-            print(f"Kokoro is_phonemes=True warning for '{word_text}' [{lang_code}]: {e_ph}")
-
-    # Direct lang_code fallback with native voice vector
-    punct_w = word_text.strip() + "."
-    samples, sr = kokoro.create(punct_w, voice=native_voice_vec, speed=speed, lang=lang_code)
-    return samples, sr
+    return re.sub(r'\s{2,}', ' ', spoken).strip()
 
 
 def generate_kokoro_asmr_voiceover(title_word, text, caption_text):
     """
-    Narrates English sentences with 55% af_nicole + 45% af_heart (Grade-A ASMR whisper),
-    and switches to 90% Native Voice + 10% af_nicole with Misaki Native G2P (is_phonemes=True)
-    whenever pronouncing the foreign Title word.
+    100% Pure 55% af_nicole (breathy ASMR whisper) + 45% af_heart (warm emotional depth)
+    at 0.83x speed in 'en-us', with a 1.1s meditative silence gap between sentences
+    and the 12ms Binaural Ribbon-Mic FFmpeg mastering chain.
     """
-    chunks = re.split(r'(?<=[.!?])\s+|\n+', text.replace("\r", ""))
+    spoken_text = prepare_spoken_script(title_word, text, caption_text)
+    chunks = re.split(r'(?<=[.!?])\s+|\n+', spoken_text.replace("\r", ""))
     phrases = [c.strip() for c in chunks if c.strip()]
     if not phrases:
         phrases = ["Peace comes from within."]
-
-    lang_name, native_lang_code, native_voice_name = detect_target_language(title_word, text, caption_text)
-    print(f"Detected row language: {lang_name.upper()} (Kokoro lang='{native_lang_code}', Native Voice='{native_voice_name}', Title='{title_word}')")
 
     raw_gen = False
     try:
         kokoro = Kokoro("kokoro-v1.0.int8.onnx", "voices-v1.0.bin")
         try:
-            v_nicole = kokoro.get_voice_style("af_nicole")
-            v_heart = kokoro.get_voice_style("af_heart")
-            english_asmr_vec = (v_nicole * 0.55) + (v_heart * 0.45)
-
-            # Use 90% Native Voice + 10% af_nicole for authentic native articulation with soft ASMR airiness
-            if native_lang_code != "en-us":
-                v_native = kokoro.get_voice_style(native_voice_name)
-                native_word_vec = (v_native * 0.90) + (v_nicole * 0.10)
-            else:
-                native_word_vec = english_asmr_vec
-            print(f"Voice vectors ready: English=[55% af_nicole + 45% af_heart], Foreign Word=[90% {native_voice_name} + 10% af_nicole]")
+            v1 = kokoro.get_voice_style("af_nicole")
+            v2 = kokoro.get_voice_style("af_heart")
+            target_voice = (v1 * 0.55) + (v2 * 0.45)
+            print("Using custom 55% af_nicole + 45% af_heart blended ASMR voice vector.")
         except Exception:
-            english_asmr_vec = "af_nicole"
-            native_word_vec = native_voice_name
+            target_voice = "af_nicole"
 
         audio_segments = []
         sample_rate = 24000
-        clean_title = (title_word or "").strip()
-        ref_en_samples = None
 
         for i, phrase in enumerate(phrases):
-            if clean_title and re.search(re.escape(clean_title), phrase, flags=re.IGNORECASE) and native_lang_code != "en-us":
-                m = re.search(re.escape(clean_title), phrase, flags=re.IGNORECASE)
-                prefix_en = re.sub(r'[….:\-–—,\'"‘’“”]+\s*$', '', phrase[:m.start()]).strip()
-                suffix_en = re.sub(r'^[.!?…,\'"‘’“”\s]+', '', phrase[m.end():]).strip()
-
-                # 1. Speak the English lead-in ("There's a word in French")
-                if prefix_en:
-                    s_pre, sample_rate = kokoro.create(
-                        prefix_en + ".",
-                        voice=english_asmr_vec,
-                        speed=0.83,
-                        lang="en-us"
-                    )
-                    ref_en_samples = s_pre
-                    audio_segments.append(s_pre)
-                    audio_segments.append(np.zeros(int(sample_rate * 0.35), dtype=np.float32))
-
-                # 2. Speak the Foreign Title Word using 90% Native Voice + Official Misaki Native G2P
-                s_word, sample_rate = synthesize_native_word(
-                    kokoro, clean_title, native_word_vec, native_lang_code, speed=0.78
-                )
-                s_word = match_rms_and_fade(s_word, ref_en_samples, sample_rate)
-                audio_segments.append(s_word)
-
-                # 3. Speak any trailing English words in the sentence
-                if suffix_en:
-                    audio_segments.append(np.zeros(int(sample_rate * 0.35), dtype=np.float32))
-                    s_suf, sample_rate = kokoro.create(
-                        suffix_en,
-                        voice=english_asmr_vec,
-                        speed=0.83,
-                        lang="en-us"
-                    )
-                    audio_segments.append(s_suf)
-            else:
-                s_seg, sample_rate = kokoro.create(
-                    phrase,
-                    voice=english_asmr_vec,
-                    speed=0.83,
-                    lang="en-us"
-                )
-                if ref_en_samples is None:
-                    ref_en_samples = s_seg
-                audio_segments.append(s_seg)
+            print(f"Synthesizing sentence {i+1}: {phrase}")
+            samples, sample_rate = kokoro.create(
+                phrase,
+                voice=target_voice,
+                speed=0.83,
+                lang="en-us"
+            )
+            audio_segments.append(samples)
 
             if i < len(phrases) - 1:
                 pause_samples = np.zeros(int(sample_rate * 1.10), dtype=np.float32)
@@ -508,7 +460,7 @@ def generate_kokoro_asmr_voiceover(title_word, text, caption_text):
         sf.write("voice_raw.wav", full_audio, sample_rate)
 
         if os.path.exists("voice_raw.wav") and os.path.getsize("voice_raw.wav") > 1000:
-            print("Generated blended Kokoro-82M bilingual ASMR voiceover successfully!")
+            print("Generated blended Kokoro-82M ASMR voiceover successfully!")
             raw_gen = True
     except Exception as e:
         print(f"Kokoro-82M error ({e}), falling back to Edge-TTS...")
@@ -517,7 +469,7 @@ def generate_kokoro_asmr_voiceover(title_word, text, caption_text):
         try:
             import edge_tts
             import asyncio
-            communicate = edge_tts.Communicate(text, voice="en-GB-RyanNeural", rate="-12%", pitch="-2Hz")
+            communicate = edge_tts.Communicate(spoken_text, voice="en-GB-RyanNeural", rate="-12%", pitch="-2Hz")
             asyncio.run(communicate.save("voice_raw.wav"))
             raw_gen = True
         except Exception as e2:
@@ -525,7 +477,6 @@ def generate_kokoro_asmr_voiceover(title_word, text, caption_text):
 
     if raw_gen:
         try:
-            # 12ms Binaural Ribbon-Mic Mastering Chain unifies the English & Native voices into one acoustic space
             subprocess.run([
                 "ffmpeg", "-y", "-i", "voice_raw.wav",
                 "-af", (
@@ -962,7 +913,7 @@ def upload_video_with_fallback():
 def main():
     ensure_assets()
 
-    # Step 1: Generate Voiceover FIRST (with Misaki native G2P + 90% native voice for Title)
+    # Step 1: Generate Voiceover FIRST (100% pure 55% af_nicole + 45% af_heart with phonetic map)
     generate_kokoro_asmr_voiceover(title, overlay_text, caption)
     vo_duration = get_duration("voice.mp3")
 
