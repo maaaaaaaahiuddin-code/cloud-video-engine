@@ -9,15 +9,17 @@ import textwrap
 import requests
 import subprocess
 
-# Auto-install required packages if missing in workflow YAML
+# Auto-install required packages (including misaki[ja] and unidic-lite for native G2P)
 try:
     import soundfile as sf
     import numpy as np
     from kokoro_onnx import Kokoro
+    import misaki
 except ImportError:
     subprocess.run([
         sys.executable, "-m", "pip", "install",
-        "kokoro-onnx", "soundfile", "numpy", "fonttools", "edge-tts", "gTTS"
+        "kokoro-onnx", "soundfile", "numpy", "fonttools",
+        "misaki[ja]", "unidic-lite", "phonemizer-fork", "edge-tts", "gTTS"
     ], check=True)
     import soundfile as sf
     import numpy as np
@@ -69,7 +71,6 @@ caption = str(payload.get(
 PIXABAY_API_KEY = os.environ.get("PIXABAY_API_KEY", "").strip().strip('"').strip("'")
 FREESOUND_API_KEY = os.environ.get("FREESOUND_API_KEY", "").strip().strip('"').strip("'")
 
-# Built-in US2 Make.com Webhook URL + Secret support
 PRIMARY_MAKE_WEBHOOK = "https://hook.us2.make.com/ga5opcigaf8fw3keq4zh5x5uy2r6gs24"
 raw_webhook = os.environ.get("MAKE_WEBHOOK_URL", "").strip().strip('"').strip("'")
 if raw_webhook.startswith("MAKE_WEBHOOK_URL="):
@@ -80,7 +81,6 @@ VO_START_DELAY = 2.0        # Voiceover starts at 2.0 seconds
 EXTRA_TAIL_SECONDS = 4.0    # Extra 4.0 seconds of calm ASMR + Piano after voiceover finishes
 FADE_DURATION = 1.5         # Smooth 1.5s fade-out at the very end
 
-# Supports classic nature niches and all 11 niches from words_of_the_world_video_sheet.xlsx
 NICHE_AUDIO_MAP = {
     "rain": "gentle rain falling window ambient asmr",
     "ocean": "calm ocean waves beach water ambient",
@@ -154,7 +154,6 @@ def ensure_assets():
             except Exception as e:
                 print(f"Font attempt skipped: {e}")
 
-    # Build a merged Latin + Devanagari serif font so mixed English + Hindi lines never show boxes
     if not os.path.exists("MergedHindiSerif.ttf"):
         try:
             from fontTools.merge import Merger
@@ -221,15 +220,6 @@ def detect_target_language(title_str, overlay_str, caption_str):
     return "english", "en-us", "af_heart"
 
 
-def extract_phonetic_hint(title_str, caption_str):
-    """Extracts parenthesized reading from Caption if present, e.g. '木漏れ日 (komorebi) | Japanese' -> 'komorebi'."""
-    first_line = caption_str.splitlines()[0] if caption_str else ""
-    m = re.search(r'\(([^)]+)\)', first_line)
-    if m:
-        return m.group(1).strip()
-    return title_str
-
-
 def prepare_poetic_lines(title_text, body_text):
     """
     Formats:
@@ -240,7 +230,6 @@ def prepare_poetic_lines(title_text, body_text):
     current_y = 0
     file_idx = 0
 
-    # --- 1. TITLE BLOCK (Yellow, Bigger than overlay_text) ---
     clean_title = (title_text or "").strip()
     if clean_title:
         title_wrapped = textwrap.wrap(clean_title, width=22) or [clean_title]
@@ -263,7 +252,6 @@ def prepare_poetic_lines(title_text, body_text):
 
         current_y += title_bottom_gap
 
-    # --- 2. OVERLAY_TEXT BLOCK ---
     cleaned = (body_text or "").replace("\r\n", "\n").replace("\u2028", "\n").replace("\u2029", "\n").strip()
     if not cleaned:
         cleaned = "Peace comes from within.\nDo not seek it without."
@@ -315,32 +303,123 @@ def get_duration(filename):
         return 10.0
 
 
-def synthesize_kokoro_segment(kokoro, text_seg, voice_vec, lang_code, speed=0.83, fallback_text=None):
-    """Synthesizes a single phrase with Kokoro-82M, with safe fallback for Kanji/non-Latin tokens."""
-    try:
-        samples, sr = kokoro.create(text_seg, voice=voice_vec, speed=speed, lang=lang_code)
-        if samples is not None and len(samples) > 400:
-            return samples, sr
-    except Exception as e:
-        print(f"Direct Kokoro phoneme warning for '{text_seg}' [{lang_code}]: {e}")
+def phonemize_native_kokoro(word_text, lang_code):
+    """
+    Uses Kokoro-82M's official Misaki G2P engine (JAG2P for Japanese Kanji/Kana,
+    EspeakG2P for French, Spanish, Italian, Portuguese, and Hindi) so non-English words
+    are converted into authentic native Kokoro IPA phonemes instead of English phonemes.
+    """
+    clean_w = word_text.strip()
+    if not clean_w:
+        return ""
 
-    if fallback_text and fallback_text != text_seg:
+    # Append sentence-final punctuation so Kokoro uses natural falling cadence on single words
+    punct_w = clean_w if clean_w[-1] in ".!?。！？" else (clean_w + "。" if lang_code == "ja" else clean_w + ".")
+
+    # 1. Japanese Native G2P via Misaki JAG2P (Kanji/Kana -> Pitch-Accented Japanese IPA)
+    if lang_code == "ja":
         try:
-            phonetic_lang = "it" if lang_code == "ja" else lang_code
-            samples, sr = kokoro.create(fallback_text, voice=voice_vec, speed=speed, lang=phonetic_lang)
+            from misaki.ja import JAG2P
+            g2p_ja = JAG2P()
+            res = g2p_ja(punct_w)
+            phonemes = res[0] if isinstance(res, tuple) else str(res)
+            if phonemes and phonemes.strip():
+                print(f"Native Japanese G2P ['{clean_w}'] -> IPA: {phonemes}")
+                return phonemes.strip()
+        except Exception as e_ja:
+            print(f"Misaki JAG2P warning: {e_ja}")
+
+    # 2. Romance & Hindi Native G2P via Misaki EspeakG2P ('fr-fr', 'es', 'it', 'pt-br', 'hi')
+    try:
+        from misaki.espeak import EspeakG2P
+        g2p_espeak = EspeakG2P(language=lang_code)
+        res = g2p_espeak(punct_w)
+        phonemes = res[0] if isinstance(res, tuple) else str(res)
+        if phonemes and phonemes.strip():
+            print(f"Misaki Native G2P [{lang_code} '{clean_w}'] -> IPA: {phonemes}")
+            return phonemes.strip()
+    except Exception as e_misaki:
+        print(f"Misaki EspeakG2P warning ({lang_code}): {e_misaki}")
+
+    # 3. Direct system espeak-ng IPA fallback
+    try:
+        ipa_out = subprocess.check_output(
+            ["espeak-ng", "-q", "--ipa", "-v", lang_code, punct_w],
+            text=True
+        ).strip()
+        if ipa_out:
+            print(f"espeak-ng Native IPA [{lang_code} '{clean_w}'] -> {ipa_out}")
+            return ipa_out
+    except Exception as e_esp:
+        print(f"System espeak-ng fallback warning: {e_esp}")
+
+    return ""
+
+
+def match_rms_and_fade(target_audio, reference_audio, sr=24000):
+    """
+    Matches the RMS loudness of the native word to the surrounding English narrator
+    and applies a 15ms cosine fade-in/out so the voice transition is completely seamless.
+    """
+    if target_audio is None or len(target_audio) == 0:
+        return target_audio
+
+    audio = target_audio.astype(np.float32)
+    ref_rms = np.sqrt(np.mean(reference_audio.astype(np.float32) ** 2)) if (reference_audio is not None and len(reference_audio) > 400) else 0.08
+    tgt_rms = np.sqrt(np.mean(audio ** 2))
+
+    if tgt_rms > 1e-4 and ref_rms > 1e-4:
+        gain = np.clip(ref_rms / tgt_rms, 0.65, 1.55)
+        audio = audio * gain
+
+    fade_len = min(int(sr * 0.015), len(audio) // 4)
+    if fade_len > 1:
+        fade_in = np.linspace(0.0, 1.0, fade_len, dtype=np.float32)
+        fade_out = np.linspace(1.0, 0.0, fade_len, dtype=np.float32)
+        audio[:fade_len] *= fade_in
+        audio[-fade_len:] *= fade_out
+
+    return np.clip(audio, -0.98, 0.98)
+
+
+def synthesize_native_word(kokoro, word_text, native_voice_vec, lang_code, speed=0.78):
+    """
+    Synthesizes the foreign Title word using:
+      1) Official Misaki native IPA phonemes + is_phonemes=True
+      2) 90% Native Speaker Vector + 10% af_nicole ASMR whisper vector
+    """
+    phonemes = phonemize_native_kokoro(word_text, lang_code)
+    if phonemes:
+        try:
+            # Filter phonemes to valid Kokoro vocab tokens if vocab attribute is exposed
+            if hasattr(kokoro, "tokenizer") and hasattr(kokoro.tokenizer, "vocab"):
+                vocab = kokoro.tokenizer.vocab
+                filtered_p = "".join(c for c in phonemes if c in vocab).strip()
+                if filtered_p:
+                    phonemes = filtered_p
+
+            samples, sr = kokoro.create(
+                phonemes,
+                voice=native_voice_vec,
+                speed=speed,
+                lang=lang_code,
+                is_phonemes=True
+            )
             if samples is not None and len(samples) > 400:
                 return samples, sr
-        except Exception as e2:
-            print(f"Phonetic fallback warning: {e2}")
+        except Exception as e_ph:
+            print(f"Kokoro is_phonemes=True warning for '{word_text}' [{lang_code}]: {e_ph}")
 
-    samples, sr = kokoro.create(fallback_text or text_seg, voice=voice_vec, speed=speed, lang="en-us")
+    # Direct lang_code fallback with native voice vector
+    punct_w = word_text.strip() + "."
+    samples, sr = kokoro.create(punct_w, voice=native_voice_vec, speed=speed, lang=lang_code)
     return samples, sr
 
 
 def generate_kokoro_asmr_voiceover(title_word, text, caption_text):
     """
-    Keeps the 55% af_nicole + 45% af_heart English ASMR voice quality throughout,
-    while switching Kokoro-82M to the native language phonemizer (fr-fr, es, it, pt-br, hi, ja)
+    Narrates English sentences with 55% af_nicole + 45% af_heart (Grade-A ASMR whisper),
+    and switches to 90% Native Voice + 10% af_nicole with Misaki Native G2P (is_phonemes=True)
     whenever pronouncing the foreign Title word.
     """
     chunks = re.split(r'(?<=[.!?])\s+|\n+', text.replace("\r", ""))
@@ -349,8 +428,7 @@ def generate_kokoro_asmr_voiceover(title_word, text, caption_text):
         phrases = ["Peace comes from within."]
 
     lang_name, native_lang_code, native_voice_name = detect_target_language(title_word, text, caption_text)
-    phonetic_hint = extract_phonetic_hint(title_word, caption_text)
-    print(f"Detected row language: {lang_name.upper()} (Kokoro lang='{native_lang_code}', Title='{title_word}')")
+    print(f"Detected row language: {lang_name.upper()} (Kokoro lang='{native_lang_code}', Native Voice='{native_voice_name}', Title='{title_word}')")
 
     raw_gen = False
     try:
@@ -360,48 +438,66 @@ def generate_kokoro_asmr_voiceover(title_word, text, caption_text):
             v_heart = kokoro.get_voice_style("af_heart")
             english_asmr_vec = (v_nicole * 0.55) + (v_heart * 0.45)
 
+            # Use 90% Native Voice + 10% af_nicole for authentic native articulation with soft ASMR airiness
             if native_lang_code != "en-us":
                 v_native = kokoro.get_voice_style(native_voice_name)
-                native_asmr_vec = (english_asmr_vec * 0.80) + (v_native * 0.20)
+                native_word_vec = (v_native * 0.90) + (v_nicole * 0.10)
             else:
-                native_asmr_vec = english_asmr_vec
-            print("Using 55% af_nicole + 45% af_heart ASMR voice vector with native pronunciation switching.")
+                native_word_vec = english_asmr_vec
+            print(f"Voice vectors ready: English=[55% af_nicole + 45% af_heart], Foreign Word=[90% {native_voice_name} + 10% af_nicole]")
         except Exception:
             english_asmr_vec = "af_nicole"
-            native_asmr_vec = "af_nicole"
+            native_word_vec = native_voice_name
 
         audio_segments = []
         sample_rate = 24000
         clean_title = (title_word or "").strip()
+        ref_en_samples = None
 
         for i, phrase in enumerate(phrases):
-            if clean_title and clean_title in phrase and native_lang_code != "en-us":
-                parts = phrase.split(clean_title, 1)
-                prefix_en = re.sub(r'[….:\-–—]+\s*$', '', parts[0]).strip()
-                suffix_en = re.sub(r'^[.!?…,\s]+', '', parts[1]).strip()
+            if clean_title and re.search(re.escape(clean_title), phrase, flags=re.IGNORECASE) and native_lang_code != "en-us":
+                m = re.search(re.escape(clean_title), phrase, flags=re.IGNORECASE)
+                prefix_en = re.sub(r'[….:\-–—,\'"‘’“”]+\s*$', '', phrase[:m.start()]).strip()
+                suffix_en = re.sub(r'^[.!?…,\'"‘’“”\s]+', '', phrase[m.end():]).strip()
 
+                # 1. Speak the English lead-in ("There's a word in French")
                 if prefix_en:
-                    s_pre, sample_rate = synthesize_kokoro_segment(
-                        kokoro, prefix_en + ".", english_asmr_vec, "en-us", speed=0.83
+                    s_pre, sample_rate = kokoro.create(
+                        prefix_en + ".",
+                        voice=english_asmr_vec,
+                        speed=0.83,
+                        lang="en-us"
                     )
+                    ref_en_samples = s_pre
                     audio_segments.append(s_pre)
-                    audio_segments.append(np.zeros(int(sample_rate * 0.38), dtype=np.float32))
+                    audio_segments.append(np.zeros(int(sample_rate * 0.35), dtype=np.float32))
 
-                s_word, sample_rate = synthesize_kokoro_segment(
-                    kokoro, clean_title, native_asmr_vec, native_lang_code, speed=0.80, fallback_text=phonetic_hint
+                # 2. Speak the Foreign Title Word using 90% Native Voice + Official Misaki Native G2P
+                s_word, sample_rate = synthesize_native_word(
+                    kokoro, clean_title, native_word_vec, native_lang_code, speed=0.78
                 )
+                s_word = match_rms_and_fade(s_word, ref_en_samples, sample_rate)
                 audio_segments.append(s_word)
 
+                # 3. Speak any trailing English words in the sentence
                 if suffix_en:
                     audio_segments.append(np.zeros(int(sample_rate * 0.35), dtype=np.float32))
-                    s_suf, sample_rate = synthesize_kokoro_segment(
-                        kokoro, suffix_en, english_asmr_vec, "en-us", speed=0.83
+                    s_suf, sample_rate = kokoro.create(
+                        suffix_en,
+                        voice=english_asmr_vec,
+                        speed=0.83,
+                        lang="en-us"
                     )
                     audio_segments.append(s_suf)
             else:
-                s_seg, sample_rate = synthesize_kokoro_segment(
-                    kokoro, phrase, english_asmr_vec, "en-us", speed=0.83
+                s_seg, sample_rate = kokoro.create(
+                    phrase,
+                    voice=english_asmr_vec,
+                    speed=0.83,
+                    lang="en-us"
                 )
+                if ref_en_samples is None:
+                    ref_en_samples = s_seg
                 audio_segments.append(s_seg)
 
             if i < len(phrases) - 1:
@@ -429,6 +525,7 @@ def generate_kokoro_asmr_voiceover(title_word, text, caption_text):
 
     if raw_gen:
         try:
+            # 12ms Binaural Ribbon-Mic Mastering Chain unifies the English & Native voices into one acoustic space
             subprocess.run([
                 "ffmpeg", "-y", "-i", "voice_raw.wav",
                 "-af", (
@@ -732,10 +829,7 @@ def verify_url_accessible(url):
 
 
 def upload_to_github_release(filepath):
-    """
-    Uses GITHUB_TOKEN to host final_output.mp4 directly on GitHub Releases CDN.
-    100% free, never blocked by ISPs, and fully supported by Instagram/Facebook APIs.
-    """
+    """Uses GITHUB_TOKEN to host final_output.mp4 directly on GitHub Releases CDN."""
     gh_token = os.environ.get("GITHUB_TOKEN", "").strip()
     gh_repo = os.environ.get("GITHUB_REPOSITORY", "maaaaaaaahiuddin-code/cloud-video-engine").strip()
     if not gh_token:
@@ -748,7 +842,6 @@ def upload_to_github_release(filepath):
     tag_name = "rendered-videos"
     api_base = f"https://api.github.com/repos/{gh_repo}"
 
-    # 1. Get or create the 'rendered-videos' release
     r = requests.get(f"{api_base}/releases/tags/{tag_name}", headers=headers, timeout=20)
     if r.status_code == 200:
         release_data = r.json()
@@ -773,7 +866,6 @@ def upload_to_github_release(filepath):
     release_id = release_data.get("id")
     asset_name = f"video_row_{row_id}_{random.randint(1000, 9999)}.mp4"
 
-    # 2. Upload the MP4 binary with Content-Type: video/mp4
     upload_url = f"https://uploads.github.com/repos/{gh_repo}/releases/{release_id}/assets?name={asset_name}"
     upload_headers = {
         "Authorization": f"Bearer {gh_token}",
@@ -794,7 +886,6 @@ def upload_to_github_release(filepath):
 
 
 def upload_video_with_fallback():
-    # 1. Primary: Cloudinary Video Upload (if CLOUDINARY_URL secret is valid)
     if os.environ.get("CLOUDINARY_URL", "").startswith("cloudinary://"):
         try:
             res = cloudinary.uploader.upload(
@@ -810,7 +901,6 @@ def upload_video_with_fallback():
         except Exception as e:
             print(f"Cloudinary upload skipped ({e}). Trying GitHub Release CDN...")
 
-    # 2. Backup 1: GitHub Releases CDN (Fast, global HTTPS, never blocked by ISPs or Meta)
     try:
         gh_url = upload_to_github_release("final_output.mp4")
         if gh_url:
@@ -818,7 +908,6 @@ def upload_video_with_fallback():
     except Exception as e_gh:
         print(f"GitHub Release upload skipped: {e_gh}")
 
-    # 3. Backup 2: tmpfiles.org with forced HTTPS direct download link
     try:
         with open("final_output.mp4", "rb") as f:
             r = requests.post(
@@ -836,7 +925,6 @@ def upload_video_with_fallback():
     except Exception as e_tmp:
         print(f"tmpfiles backup failed: {e_tmp}")
 
-    # 4. Backup 3: 0x0.st direct HTTPS MP4 host
     try:
         with open("final_output.mp4", "rb") as f:
             r = requests.post(
@@ -853,7 +941,6 @@ def upload_video_with_fallback():
     except Exception as e_0x0:
         print(f"0x0.st backup failed: {e_0x0}")
 
-    # 5. Backup 4: Litterbox (72h direct MP4 link)
     try:
         with open("final_output.mp4", "rb") as f:
             r = requests.post(
@@ -875,7 +962,7 @@ def upload_video_with_fallback():
 def main():
     ensure_assets()
 
-    # Step 1: Generate Voiceover FIRST (with native Title pronunciation) so we know its exact length
+    # Step 1: Generate Voiceover FIRST (with Misaki native G2P + 90% native voice for Title)
     generate_kokoro_asmr_voiceover(title, overlay_text, caption)
     vo_duration = get_duration("voice.mp3")
 
@@ -904,7 +991,6 @@ def main():
         "caption": caption
     }
 
-    # Always send to your primary US2 Make.com Webhook URL
     target_webhooks = [PRIMARY_MAKE_WEBHOOK]
     if MAKE_WEBHOOK_URL.startswith("http") and MAKE_WEBHOOK_URL != PRIMARY_MAKE_WEBHOOK:
         target_webhooks.append(MAKE_WEBHOOK_URL)
