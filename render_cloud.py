@@ -79,12 +79,25 @@ VO_START_DELAY = 0.6        # Fast-Hook: Voiceover starts at 0.6 seconds (600ms)
 EXTRA_TAIL_SECONDS = 4.0    # Extra 4.0 seconds of calm ASMR + Piano after voiceover finishes
 FADE_DURATION = 1.5         # Smooth 1.5s fade-out at the very end
 
-# Universal tag filter to block non-aesthetic CGI, cartoon, studio, or commercial clips on Pixabay
+# Strict 30-term filter to block AI, CGI, 3D, cartoon, studio, or synthetic clips
 BANNED_VISUAL_TAGS = (
     "animation", "cartoon", "3d", "cgi", "render", "green screen",
     "chroma", "isolated", "white background", "business", "office",
-    "commercial", "marketing", "illustration", "comic"
+    "commercial", "marketing", "illustration", "comic",
+    "ai", "ai generated", "artificial intelligence", "synthetic",
+    "vfx", "motion graphics", "vector", "graphic", "digital art",
+    "virtual", "fractal", "abstract", "sci-fi", "fantasy", "neon"
 )
+
+# Real-camera nature film backup queries if a specific keyword has no film hits
+REAL_NATURE_FALLBACK_QUERIES = [
+    "calm nature rain",
+    "forest trees wind",
+    "ocean waves beach",
+    "sunset sky clouds",
+    "river water stream",
+    "night sky stars"
+]
 
 NICHE_AUDIO_MAP = {
     "rain": "gentle rain falling window ambient asmr",
@@ -737,34 +750,56 @@ def detect_niche_keyword():
     return "rain"
 
 
+def query_pixabay_real_film(query_str, orientation="vertical"):
+    """Queries Pixabay strictly for real camera film footage (video_type=film) and filters out banned tags."""
+    if not query_str:
+        return None
+    q = urllib.parse.quote(query_str.strip())
+    orient_param = f"&orientation={orientation}" if orientation in ("vertical", "horizontal") else ""
+    url = (
+        f"https://pixabay.com/api/videos/?key={PIXABAY_API_KEY}"
+        f"&q={q}{orient_param}&video_type=film&per_page=25&safesearch=true"
+    )
+    r = requests.get(url, timeout=20)
+    raw_hits = r.json().get("hits", []) if r.status_code == 200 else []
+
+    # Strictly keep real film clips without any AI/CGI/animation/studio tags
+    clean_hits = [
+        h for h in raw_hits
+        if h.get("type", "film") == "film"
+        and not any(bad in h.get("tags", "").lower() for bad in BANNED_VISUAL_TAGS)
+    ]
+    if clean_hits:
+        return random.choice(clean_hits)
+    return None
+
+
 def download_visual_background(target_duration):
-    if PIXABAY_API_KEY:
+    """
+    100% Real Camera Footage Only:
+      - Never uses Pollinations AI or synthetic image generators.
+      - Searches vertical real film first, then horizontal/all real film (auto-cropped to 9:16 by FFmpeg),
+        then guaranteed real nature film queries.
+    """
+    if not PIXABAY_API_KEY:
+        raise RuntimeError("PIXABAY_API_KEY is required to download real camera footage!")
+
+    search_plan = [
+        # Stage 1: Exact sheet keywords in vertical real-camera film
+        (search_keyword, "vertical"),
+        (fallback_keyword, "vertical"),
+        # Stage 2: Exact sheet keywords in any orientation real-camera film (FFmpeg center-crops to 1080x1920)
+        (search_keyword, "all"),
+        (fallback_keyword, "all"),
+    ]
+    # Stage 3: Guaranteed real-camera nature film backups
+    for nat_q in REAL_NATURE_FALLBACK_QUERIES:
+        search_plan.append((nat_q, "vertical"))
+        search_plan.append((nat_q, "all"))
+
+    for q_text, orient in search_plan:
         try:
-            queries = [
-                urllib.parse.quote(search_keyword),
-                urllib.parse.quote(fallback_keyword),
-                "calm+nature+rain"
-            ]
-            chosen_hit = None
-            for q in queries:
-                if not q:
-                    continue
-                url = (
-                    f"https://pixabay.com/api/videos/?key={PIXABAY_API_KEY}"
-                    f"&q={q}&orientation=vertical&video_type=film&per_page=20&safesearch=true"
-                )
-                r = requests.get(url, timeout=20)
-                raw_hits = r.json().get("hits", []) if r.status_code == 200 else []
-
-                # Filter out non-aesthetic tags in BANNED_VISUAL_TAGS
-                clean_hits = [
-                    h for h in raw_hits
-                    if not any(bad in h.get("tags", "").lower() for bad in BANNED_VISUAL_TAGS)
-                ]
-                if clean_hits:
-                    chosen_hit = random.choice(clean_hits)
-                    break
-
+            chosen_hit = query_pixabay_real_film(q_text, orientation=orient)
             if chosen_hit:
                 vids = chosen_hit.get("videos", {})
                 v_url = (
@@ -777,39 +812,12 @@ def download_visual_background(target_duration):
                     if len(vid_data) > 50_000:
                         with open("raw_video.mp4", "wb") as f:
                             f.write(vid_data)
-                        print("Downloaded HD video from Pixabay successfully.")
+                        print(f"Downloaded real camera footage from Pixabay (query='{q_text}', orientation='{orient}').")
                         return
         except Exception as e:
-            print(f"Pixabay skipped: {e}")
+            print(f"Pixabay real-film search attempt skipped ({q_text}): {e}")
 
-    try:
-        prompt = urllib.parse.quote(
-            f"cinematic 35mm kodak film dark moody relaxing aesthetic {search_keyword} nature photography, 8k, no text"
-        )
-        seed = random.randint(1, 999999)
-        img_url = f"https://image.pollinations.ai/prompt/{prompt}?width=1080&height=1920&seed={seed}&nologo=true"
-        r = requests.get(img_url, timeout=35)
-        if r.status_code == 200 and len(r.content) > 10_000:
-            with open("bg_scene.jpg", "wb") as f:
-                f.write(r.content)
-            subprocess.run([
-                "ffmpeg", "-y", "-loop", "1", "-i", "bg_scene.jpg",
-                "-vf", "scale=1080:1920,fps=30",
-                "-t", f"{target_duration:.2f}",
-                "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
-                "raw_video.mp4"
-            ], check=True)
-            return
-    except Exception as e:
-        print(f"Pollinations fallback skipped: {e}")
-
-    subprocess.run([
-        "ffmpeg", "-y", "-f", "lavfi",
-        "-i", f"color=c=#0d1b2a:s=1080x1920:r=30:d={target_duration:.2f}",
-        "-vf", "noise=alls=8:allf=t+u",
-        "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
-        "raw_video.mp4"
-    ], check=True)
+    raise RuntimeError("Could not download real camera footage from Pixabay across all queries!")
 
 
 def fetch_asmr_audio(matched_key, target_duration):
@@ -1011,7 +1019,7 @@ def render_ffmpeg(piano_file, vo_duration, total_duration, sentence_start_times)
         f"if(lt(t,{swell_end:.2f}),0.20+0.22*((t-{vo_end:.2f})/{swell_ramp:.2f}),0.42))))"
     )
 
-    # Restored clean 46% full-screen dark matte (black@0.46) with no floating card
+    # Clean 46% full-screen dark matte (black@0.46) with no floating card
     v_filter = (
         f"[0:v]setpts={pts_multiplier:.4f}*PTS,"
         f"scale=1080:1920:force_original_aspect_ratio=increase,"
@@ -1048,204 +1056,3 @@ def render_ffmpeg(piano_file, vo_duration, total_duration, sentence_start_times)
         "-i", "voice.mp3",
         "-filter_complex", filter_complex,
         "-map", "[v]", "-map", "[a]",
-        "-t", f"{total_duration:.2f}",
-        "-c:v", "libx264", "-preset", "veryfast", "-crf", "21", "-pix_fmt", "yuv420p",
-        "-c:a", "aac", "-b:a", "192k",
-        "-movflags", "+faststart",
-        "final_output.mp4"
-    ], check=True)
-
-
-def verify_url_accessible(url):
-    """Confirms the MP4 link is publicly downloadable over HTTPS before sending to Make.com."""
-    if not url or not url.startswith("https://"):
-        return False
-    try:
-        r = requests.get(url, stream=True, timeout=20, headers={"User-Agent": "Mozilla/5.0"})
-        ok = r.status_code in (200, 206)
-        r.close()
-        return ok
-    except Exception as e:
-        print(f"URL verification failed for {url}: {e}")
-        return False
-
-
-def upload_to_github_release(filepath):
-    """Uses GITHUB_TOKEN to host final_output.mp4 directly on GitHub Releases CDN."""
-    gh_token = os.environ.get("GITHUB_TOKEN", "").strip()
-    gh_repo = os.environ.get("GITHUB_REPOSITORY", "maaaaaaaahiuddin-code/cloud-video-engine").strip()
-    if not gh_token:
-        return ""
-
-    headers = {
-        "Authorization": f"Bearer {gh_token}",
-        "Accept": "application/vnd.github+json"
-    }
-    tag_name = "rendered-videos"
-    api_base = f"https://api.github.com/repos/{gh_repo}"
-
-    r = requests.get(f"{api_base}/releases/tags/{tag_name}", headers=headers, timeout=20)
-    if r.status_code == 200:
-        release_data = r.json()
-    else:
-        r_create = requests.post(
-            f"{api_base}/releases",
-            headers=headers,
-            json={
-                "tag_name": tag_name,
-                "name": "Automated Cloud Videos",
-                "body": "Hosted MP4 assets for Make.com social publishing.",
-                "draft": False,
-                "prerelease": False
-            },
-            timeout=20
-        )
-        if r_create.status_code not in (200, 201):
-            print(f"GitHub Release creation warning: {r_create.status_code} {r_create.text}")
-            return ""
-        release_data = r_create.json()
-
-    release_id = release_data.get("id")
-    asset_name = f"video_row_{row_id}_{random.randint(1000, 9999)}.mp4"
-
-    upload_url = f"https://uploads.github.com/repos/{gh_repo}/releases/{release_id}/assets?name={asset_name}"
-    upload_headers = {
-        "Authorization": f"Bearer {gh_token}",
-        "Content-Type": "video/mp4",
-        "Accept": "application/vnd.github+json"
-    }
-    with open(filepath, "rb") as f:
-        r_up = requests.post(upload_url, headers=upload_headers, data=f, timeout=120)
-
-    if r_up.status_code in (200, 201):
-        dl_url = r_up.json().get("browser_download_url", "")
-        if verify_url_accessible(dl_url):
-            print(f"Uploaded to GitHub Releases CDN successfully: {dl_url}")
-            return dl_url
-    else:
-        print(f"GitHub Release asset upload warning: {r_up.status_code} {r_up.text}")
-    return ""
-
-
-def upload_video_with_fallback():
-    if os.environ.get("CLOUDINARY_URL", "").startswith("cloudinary://"):
-        try:
-            res = cloudinary.uploader.upload(
-                "final_output.mp4",
-                resource_type="video",
-                folder="auto_relaxing_videos",
-                timeout=120
-            )
-            video_url = res.get("secure_url", "")
-            if verify_url_accessible(video_url):
-                print(f"Uploaded to Cloudinary successfully: {video_url}")
-                return video_url
-        except Exception as e:
-            print(f"Cloudinary upload skipped ({e}). Trying GitHub Release CDN...")
-
-    try:
-        gh_url = upload_to_github_release("final_output.mp4")
-        if gh_url:
-            return gh_url
-    except Exception as e_gh:
-        print(f"GitHub Release upload skipped: {e_gh}")
-
-    try:
-        with open("final_output.mp4", "rb") as f:
-            r = requests.post(
-                "https://tmpfiles.org/api/v1/upload",
-                files={"file": ("final_output.mp4", f, "video/mp4")},
-                timeout=60
-            )
-        if r.status_code == 200:
-            raw_url = r.json().get("data", {}).get("url", "")
-            if raw_url:
-                direct_url = raw_url.replace("http://", "https://", 1).replace("tmpfiles.org/", "tmpfiles.org/dl/", 1)
-                if verify_url_accessible(direct_url):
-                    print(f"Uploaded to tmpfiles.org (HTTPS) successfully: {direct_url}")
-                    return direct_url
-    except Exception as e_tmp:
-        print(f"tmpfiles backup failed: {e_tmp}")
-
-    try:
-        with open("final_output.mp4", "rb") as f:
-            r = requests.post(
-                "https://0x0.st",
-                files={"file": ("final_output.mp4", f, "video/mp4")},
-                headers={"User-Agent": "CloudVideoRenderer/1.0"},
-                timeout=60
-            )
-        if r.status_code == 200 and r.text.strip().startswith("https://"):
-            url = r.text.strip()
-            if verify_url_accessible(url):
-                print(f"Uploaded to 0x0.st successfully: {url}")
-                return url
-    except Exception as e_0x0:
-        print(f"0x0.st backup failed: {e_0x0}")
-
-    try:
-        with open("final_output.mp4", "rb") as f:
-            r = requests.post(
-                "https://litterbox.catbox.moe/resources/internals/api.php",
-                data={"reqtype": "fileupload", "time": "72h"},
-                files={"fileToUpload": ("final_output.mp4", f, "video/mp4")},
-                timeout=60
-            )
-        if r.status_code == 200 and r.text.strip().startswith("https://"):
-            url = r.text.strip()
-            print(f"Uploaded to Litterbox successfully: {url}")
-            return url
-    except Exception as e_lit:
-        print(f"Litterbox backup failed: {e_lit}")
-
-    return ""
-
-
-def main():
-    ensure_assets()
-
-    # Step 1: Generate Voiceover FIRST and capture exact start timestamp of each sentence
-    sentence_start_times = generate_kokoro_asmr_voiceover(title, overlay_text, caption)
-    vo_duration = get_duration("voice.mp3")
-
-    # Step 2: Calculate Dynamic Total Video Duration = 0.6s fast-hook intro + full voiceover + 4.0s extra tail
-    total_duration = max(12.0, round(VO_START_DELAY + vo_duration + EXTRA_TAIL_SECONDS, 2))
-    print(f"Voiceover length: {vo_duration:.2f}s -> Dynamic Total Video Duration set to: {total_duration:.2f}s (0.6s intro + 4.0s tail)")
-
-    # Step 3: Download/generate visual & audio tracks matched to total_duration
-    matched_niche = detect_niche_keyword()
-    download_visual_background(total_duration)
-    fetch_asmr_audio(matched_niche, total_duration)
-    piano_file = fetch_relaxing_piano(total_duration)
-
-    # Step 4: Render final video with clean 46% full-screen matte (no floating card)
-    render_ffmpeg(piano_file, vo_duration, total_duration, sentence_start_times)
-    video_url = upload_video_with_fallback()
-    print(f"Final Hosted Video URL: {video_url}")
-
-    if not video_url or not video_url.startswith("http"):
-        raise RuntimeError("Video upload failed across all hosts; no valid video_url to send to Make.com!")
-
-    webhook_payload = {
-        "row_id": row_id,
-        "title": title,
-        "video_url": video_url,
-        "caption": caption
-    }
-
-    target_webhooks = [PRIMARY_MAKE_WEBHOOK]
-    if MAKE_WEBHOOK_URL.startswith("http") and MAKE_WEBHOOK_URL != PRIMARY_MAKE_WEBHOOK:
-        target_webhooks.append(MAKE_WEBHOOK_URL)
-
-    for wh_url in target_webhooks:
-        resp = requests.post(
-            wh_url,
-            json=webhook_payload,
-            headers={"Content-Type": "application/json"},
-            timeout=30
-        )
-        print(f"Sent webhook to {wh_url} -> Status: {resp.status_code} | Response: {resp.text}")
-
-
-if __name__ == "__main__":
-    main()
