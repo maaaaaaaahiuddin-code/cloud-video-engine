@@ -75,7 +75,7 @@ if raw_webhook.startswith("MAKE_WEBHOOK_URL="):
     raw_webhook = raw_webhook.split("MAKE_WEBHOOK_URL=", 1)[1].strip().strip('"').strip("'")
 MAKE_WEBHOOK_URL = raw_webhook if raw_webhook.startswith("http") else PRIMARY_MAKE_WEBHOOK
 
-VO_START_DELAY = 2.0        # Voiceover starts at 2.0 seconds
+VO_START_DELAY = 0.6        # Fast-Hook: Voiceover starts at 0.6 seconds (600ms)
 EXTRA_TAIL_SECONDS = 4.0    # Extra 4.0 seconds of calm ASMR + Piano after voiceover finishes
 FADE_DURATION = 1.5         # Smooth 1.5s fade-out at the very end
 
@@ -100,9 +100,7 @@ NICHE_AUDIO_MAP = {
     "solitude": "quiet night wind crickets calm ambient"
 }
 
-# Smooth Acoustic Phonetic Map for all 100 words in words_of_the_world_video_sheet.xlsx
-# Engineered specifically so 55% af_nicole + 45% af_heart (en-us) pronounces every word
-# smoothly and accurately in one continuous sentence without ever switching voices.
+# 1. Smooth Acoustic Phonetic Map for Kokoro-82M Voiceover (unbroken single-breath reading)
 SMOOTH_SPOKEN_MAP = {
     # French (17)
     "Dépaysement": "daypaizmahn",
@@ -221,6 +219,121 @@ SMOOTH_SPOKEN_MAP = {
     "उम्मीद": "oomeed"
 }
 
+# 2. Clean Hyphenated Pronunciation Guide for On-Screen Editorial Subtitle
+DISPLAY_PRONUNCIATION_MAP = {
+    # French (17)
+    "Dépaysement": "day-paiz-mahn",
+    "Retrouvailles": "ruh-troo-vigh",
+    "Sillage": "see-yahzh",
+    "L'esprit de l'escalier": "les-pree duh les-kal-yay",
+    "Coup de foudre": "koo duh food-ruh",
+    "Lâcher prise": "lah-shay preez",
+    "Tu me manques": "too muh mahnk",
+    "Épanouissement": "ay-pah-nwees-mahn",
+    "Douceur de vivre": "doo-sur duh vee-vruh",
+    "Chagrin": "shah-gran",
+    "Ennui": "ahn-wee",
+    "Apaisement": "ah-paiz-mahn",
+    "Tendresse": "tahn-dress",
+    "Souvenir": "soo-vuh-neer",
+    "Âme sœur": "ahm sur",
+    "Éphémère": "ay-feh-mair",
+    "Au revoir": "oh ruh-vwar",
+
+    # Spanish (17)
+    "Sobremesa": "soh-breh-meh-sah",
+    "Duende": "dwen-day",
+    "Querencia": "keh-ren-see-ah",
+    "Anhelo": "ah-neh-loh",
+    "Desvelo": "des-veh-loh",
+    "Ojalá": "oh-hah-lah",
+    "Madrugada": "mah-droo-gah-dah",
+    "Alma gemela": "ahl-mah heh-meh-lah",
+    "Corazonada": "koh-rah-soh-nah-dah",
+    "Desahogo": "des-ah-oh-goh",
+    "Aguante": "ah-gwan-tay",
+    "Amanecer": "ah-mah-neh-ser",
+    "Echar de menos": "eh-char day meh-nohs",
+    "Ilusión": "ee-loo-syohn",
+    "Despedida": "des-peh-dee-dah",
+    "Soledad": "soh-leh-dahd",
+    "Empezar de cero": "em-peh-sar day seh-roh",
+
+    # Italian (17)
+    "Dolce far niente": "dohl-chay far nyen-tay",
+    "Sprezzatura": "spret-sah-too-rah",
+    "Ti voglio bene": "tee vohl-yoh beh-nay",
+    "Struggimento": "strood-jee-men-toh",
+    "Meraviglia": "meh-rah-veel-yah",
+    "Rimpianto": "reem-pyahn-toh",
+    "Cogli l'attimo": "kohl-yee laht-tee-moh",
+    "Pazienza": "pah-tsyen-tsah",
+    "Rinascita": "ree-nah-shee-tah",
+    "Smarrimento": "zmar-ree-men-toh",
+    "Insieme": "een-syeh-may",
+    "Fidarsi": "fee-dar-see",
+    "Coraggio": "koh-rahd-joh",
+    "Disgelo": "deez-jeh-loh",
+    "Speranza": "speh-rahn-tsah",
+    "Incanto": "een-kahn-toh",
+    "Ritrovarsi": "ree-troh-var-see",
+
+    # Japanese (17)
+    "木漏れ日": "komorebi",
+    "一期一会": "ichigo ichie",
+    "侘び寂び": "wabi-sabi",
+    "物の哀れ": "mono no aware",
+    "生き甲斐": "ikigai",
+    "懐かしい": "natsukashii",
+    "七転び八起き": "nana korobi ya oki",
+    "切ない": "setsunai",
+    "面影": "omokage",
+    "以心伝心": "ishin denshin",
+    "初心": "shoshin",
+    "儚い": "hakanai",
+    "余韻": "yoin",
+    "絆": "kizuna",
+    "見守る": "mimamoru",
+    "遠回り": "toomawari",
+    "有り難う": "arigatou",
+
+    # Portuguese (16)
+    "Saudade": "sow-dah-jee",
+    "Cafuné": "kah-foo-neh",
+    "Desabafar": "deh-zah-bah-far",
+    "Aconchego": "ah-kohn-shay-goh",
+    "Companheiro": "kohm-pah-nyay-roh",
+    "Amor próprio": "ah-mor proh-pree-oh",
+    "Desenrascanço": "deh-zen-rah-skahn-soh",
+    "Mágoa": "mah-gwah",
+    "Desassossego": "deh-zah-soh-say-goh",
+    "Sossego": "soh-say-goh",
+    "Dengo": "den-goh",
+    "Fôlego": "foh-leh-goh",
+    "Gratidão": "grah-chee-down",
+    "Perdoar": "per-doh-ar",
+    "Adeus": "ah-day-oos",
+    "Lembrança": "lem-brahn-sah",
+
+    # Hindi (16)
+    "इंतज़ार": "intezaar",
+    "बिछोह": "bichoh",
+    "सुकून": "sukoon",
+    "तलाश": "talaash",
+    "हौसला": "hausla",
+    "अपनापन": "apnapan",
+    "सब्र": "sabr",
+    "ठहराव": "thehrav",
+    "फ़िक्र": "fikr",
+    "अधूरा": "adhoora",
+    "संजोना": "sanjona",
+    "मरहम": "murhum",
+    "निभाना": "nibhana",
+    "कशिश": "kashish",
+    "तन्हाई": "tanhai",
+    "उम्मीद": "ummeed"
+}
+
 
 def ensure_assets():
     """Downloads Kokoro-82M ONNX models, Poetic Serif Font, and builds Merged Hindi+Latin Serif Font."""
@@ -309,21 +422,52 @@ def get_font_for_text(line_text):
     return "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf"
 
 
-def prepare_poetic_lines(title_text, body_text):
+def build_editorial_subtitle(title_str, overlay_str, caption_str):
     """
-    Formats:
-      1) Title at the very top in Yellow (#FFD700) and larger font (fontsize=58)
-      2) Overlay_Text stanzas below in soft white (#f5f5f3) and fontsize=45
+    UPGRADE 2: Builds the editorial '[ Language  •  pronunciation ]' sub-header
+    shown directly below the Yellow Title.
+    """
+    lang_label = ""
+    first_line = caption_str.splitlines()[0] if caption_str else ""
+    if "|" in first_line:
+        lang_label = first_line.split("|")[-1].strip()
+
+    if not lang_label:
+        for l_name in ["French", "Spanish", "Italian", "Japanese", "Portuguese", "Hindi"]:
+            if l_name.lower() in f"{overlay_str} {caption_str}".lower():
+                lang_label = l_name
+                break
+
+    clean_t = (title_str or "").strip()
+    pron = DISPLAY_PRONUNCIATION_MAP.get(clean_t, "")
+    if not pron:
+        m = re.search(r'\(([^)]+)\)', first_line)
+        if m:
+            pron = m.group(1).strip()
+
+    if lang_label and pron:
+        return f"[ {lang_label}  •  {pron} ]"
+    elif lang_label:
+        return f"[ {lang_label} ]"
+    return ""
+
+
+def prepare_poetic_lines(title_text, body_text, caption_text, sentence_start_times=None):
+    """
+    UPGRADES 1, 2 & 4 + 0.6s Fast-Hook Layout:
+      1) Yellow Title (#FFD700, fontsize=58) locked at 100% opacity on Frame 0 (t=0.00s) for IG/FB Grid Cover
+      2) Editorial Sub-Header '[ Language • Pronunciation ]' (#E6C687, fontsize=32) locked at 100% opacity on Frame 0 (t=0.00s)
+      3) Overlay_Text stanzas (#f5f5f3, fontsize=45) fade in line-by-line synced to each spoken sentence (starting at t=0.60s)
     """
     items = []
     current_y = 0
     file_idx = 0
 
+    # --- 1. YELLOW TITLE BLOCK (UPGRADE 4: 100% visible at t=0.00s for IG/FB Thumbnail Cover) ---
     clean_title = (title_text or "").strip()
     if clean_title:
         title_wrapped = textwrap.wrap(clean_title, width=22) or [clean_title]
-        title_line_height = 72
-        title_bottom_gap = 55
+        title_line_height = 70
 
         for t_line in title_wrapped:
             fname = f"quote_line_{file_idx}.txt"
@@ -332,15 +476,36 @@ def prepare_poetic_lines(title_text, body_text):
             items.append({
                 "fname": fname,
                 "rel_y": current_y,
-                "fontsize": 58,           # Bigger than overlay_text (45)
-                "fontcolor": "#FFD700",   # Warm Golden Yellow
-                "fontfile": get_font_for_text(t_line)
+                "fontsize": 58,
+                "fontcolor": "#FFD700",
+                "fontfile": get_font_for_text(t_line),
+                "start_t": 0.00,
+                "instant_header": True
             })
             current_y += title_line_height
             file_idx += 1
 
-        current_y += title_bottom_gap
+        # --- 2. EDITORIAL SUB-HEADER '[ Language  •  Pronunciation ]' (UPGRADE 4: 100% visible at t=0.00s) ---
+        subtitle_str = build_editorial_subtitle(title_text, body_text, caption_text)
+        if subtitle_str:
+            fname = f"quote_line_{file_idx}.txt"
+            with open(fname, "w", encoding="utf-8", newline="\n") as f:
+                f.write(subtitle_str)
+            items.append({
+                "fname": fname,
+                "rel_y": current_y + 4,
+                "fontsize": 32,
+                "fontcolor": "#E6C687",   # Soft Champagne Gold
+                "fontfile": get_font_for_text(subtitle_str),
+                "start_t": 0.00,
+                "instant_header": True
+            })
+            current_y += 44 + 42          # Subtitle height (44px) + gap before body text (42px)
+            file_idx += 1
+        else:
+            current_y += 50
 
+    # --- 3. OVERLAY_TEXT BLOCK (Each stanza synced to its voiceover sentence timestamp) ---
     cleaned = (body_text or "").replace("\r\n", "\n").replace("\u2028", "\n").replace("\u2029", "\n").strip()
     if not cleaned:
         cleaned = "Peace comes from within.\nDo not seek it without."
@@ -355,6 +520,14 @@ def prepare_poetic_lines(title_text, body_text):
     stanza_gap = 34
 
     for s_idx, stanza in enumerate(stanzas):
+        if sentence_start_times and s_idx < len(sentence_start_times):
+            stanza_base_t = sentence_start_times[s_idx]
+        elif sentence_start_times:
+            stanza_base_t = sentence_start_times[-1] + ((s_idx - len(sentence_start_times) + 1) * 3.0)
+        else:
+            stanza_base_t = VO_START_DELAY + (s_idx * 3.2)
+
+        line_in_stanza = 0
         for raw_line in stanza.split("\n"):
             raw_line = raw_line.strip()
             if not raw_line:
@@ -369,10 +542,13 @@ def prepare_poetic_lines(title_text, body_text):
                     "rel_y": current_y,
                     "fontsize": 45,
                     "fontcolor": "#f5f5f3",
-                    "fontfile": get_font_for_text(w_line)
+                    "fontfile": get_font_for_text(w_line),
+                    "start_t": round(stanza_base_t + (line_in_stanza * 0.28), 2),
+                    "instant_header": False
                 })
                 current_y += line_height
                 file_idx += 1
+                line_in_stanza += 1
 
         if s_idx < len(stanzas) - 1:
             current_y += stanza_gap
@@ -395,17 +571,14 @@ def get_duration(filename):
 def prepare_spoken_script(title_str, overlay_str, caption_str):
     """
     Replaces foreign words in the spoken voiceover script ONLY (leaving on-screen visual text untouched)
-    so the Grade-A 55% af_nicole + 45% af_heart English voice reads the entire quote in one seamless breath
-    with natural native pronunciation.
+    so the Grade-A 55% af_nicole + 45% af_heart English voice reads the entire quote in one seamless breath.
     """
     spoken = overlay_str.replace("…", ", ").replace("...", ", ")
 
-    # 1. Replace mapped foreign words (longest phrases first)
     for word, phonetic in sorted(SMOOTH_SPOKEN_MAP.items(), key=lambda x: len(x[0]), reverse=True):
         if word in spoken:
             spoken = spoken.replace(word, phonetic)
 
-    # 2. Automatic fallback for any new Japanese/Hindi row using parenthesized reading in Caption
     clean_title = (title_str or "").strip()
     if clean_title and clean_title in spoken and clean_title not in SMOOTH_SPOKEN_MAP:
         first_line = caption_str.splitlines()[0] if caption_str else ""
@@ -418,9 +591,12 @@ def prepare_spoken_script(title_str, overlay_str, caption_str):
 
 def generate_kokoro_asmr_voiceover(title_word, text, caption_text):
     """
-    100% Pure 55% af_nicole (breathy ASMR whisper) + 45% af_heart (warm emotional depth)
-    at 0.83x speed in 'en-us', with a 1.1s meditative silence gap between sentences
-    and the 12ms Binaural Ribbon-Mic FFmpeg mastering chain.
+    Generates the 55% af_nicole + 45% af_heart voiceover AND returns the exact
+    video timestamp (in seconds) where each sentence begins speaking.
+    Includes UPGRADE 5:
+      - 1.45s pre-closing-sentence meditative pause (vs 1.10s between body sentences)
+      - 0.79x slower delivery on the final closing sentence (vs 0.83x on body sentences)
+      - 0.80s silence tail pad + warm studio room reverb (aecho) in the 12ms Ribbon-Mic chain
     """
     spoken_text = prepare_spoken_script(title_word, text, caption_text)
     chunks = re.split(r'(?<=[.!?])\s+|\n+', spoken_text.replace("\r", ""))
@@ -428,6 +604,7 @@ def generate_kokoro_asmr_voiceover(title_word, text, caption_text):
     if not phrases:
         phrases = ["Peace comes from within."]
 
+    sentence_start_times = []
     raw_gen = False
     try:
         kokoro = Kokoro("kokoro-v1.0.int8.onnx", "voices-v1.0.bin")
@@ -441,20 +618,37 @@ def generate_kokoro_asmr_voiceover(title_word, text, caption_text):
 
         audio_segments = []
         sample_rate = 24000
+        cumulative_samples = 0
+        total_phrases = len(phrases)
 
         for i, phrase in enumerate(phrases):
-            print(f"Synthesizing sentence {i+1}: {phrase}")
+            is_final_sentence = (i == total_phrases - 1 and total_phrases > 1)
+            phrase_speed = 0.79 if is_final_sentence else 0.83
+
+            sent_start_sec = round(VO_START_DELAY + (cumulative_samples / float(sample_rate)), 2)
+            sentence_start_times.append(sent_start_sec)
+            print(f"Synthesizing sentence {i+1}/{total_phrases} (starts at {sent_start_sec:.2f}s, speed={phrase_speed}x): {phrase}")
+
             samples, sample_rate = kokoro.create(
                 phrase,
                 voice=target_voice,
-                speed=0.83,
+                speed=phrase_speed,
                 lang="en-us"
             )
             audio_segments.append(samples)
+            cumulative_samples += len(samples)
 
-            if i < len(phrases) - 1:
-                pause_samples = np.zeros(int(sample_rate * 1.10), dtype=np.float32)
+            if i < total_phrases - 1:
+                # UPGRADE 5: Use a 1.45s breath pause right before the final closing sentence
+                next_is_final = (i + 1 == total_phrases - 1)
+                pause_sec = 1.45 if next_is_final else 1.10
+                pause_samples = np.zeros(int(sample_rate * pause_sec), dtype=np.float32)
                 audio_segments.append(pause_samples)
+                cumulative_samples += len(pause_samples)
+
+        # UPGRADE 5: Append 0.80s silence tail so the studio room reverb decays naturally without clipping
+        reverb_tail_pad = np.zeros(int(sample_rate * 0.80), dtype=np.float32)
+        audio_segments.append(reverb_tail_pad)
 
         full_audio = np.concatenate(audio_segments)
         sf.write("voice_raw.wav", full_audio, sample_rate)
@@ -477,6 +671,7 @@ def generate_kokoro_asmr_voiceover(title_word, text, caption_text):
 
     if raw_gen:
         try:
+            # UPGRADE 5: Added subtle warm acoustic room echo (aecho) inside the 12ms Binaural Ribbon-Mic chain
             subprocess.run([
                 "ffmpeg", "-y", "-i", "voice_raw.wav",
                 "-af", (
@@ -485,25 +680,33 @@ def generate_kokoro_asmr_voiceover(title_word, text, caption_text):
                     "equalizer=f=130:width_type=o:w=1.5:g=3.0,"
                     "equalizer=f=6200:width_type=o:w=1.5:g=-4.0,"
                     "lowpass=f=8000,"
+                    "aecho=0.88:0.90:95|190:0.12|0.07,"
                     "adelay=0|12,"
                     "afade=t=in:st=0:d=0.15,"
                     "volume=2.1"
                 ),
                 "-ar", "44100", "-ac", "2", "voice.mp3"
             ], check=True)
-            return True
         except Exception as e:
             print(f"Mastering fallback: {e}")
             subprocess.run([
                 "ffmpeg", "-y", "-i", "voice_raw.wav",
                 "-af", "volume=2.0", "-ar", "44100", "-ac", "2", "voice.mp3"
             ], check=True)
-            return True
+    else:
+        subprocess.run([
+            "ffmpeg", "-y", "-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo:d=10.0", "voice.mp3"
+        ], check=True)
 
-    subprocess.run([
-        "ffmpeg", "-y", "-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo:d=10.0", "voice.mp3"
-    ], check=True)
-    return False
+    if not sentence_start_times:
+        vo_dur = get_duration("voice.mp3")
+        total_chars = max(sum(len(p) for p in phrases), 1)
+        elapsed = 0.0
+        for p in phrases:
+            sentence_start_times.append(round(VO_START_DELAY + elapsed, 2))
+            elapsed += (len(p) / total_chars) * vo_dur
+
+    return sentence_start_times
 
 
 def detect_niche_keyword():
@@ -679,7 +882,7 @@ def fetch_relaxing_piano(target_duration):
     return "synth_piano.mp3"
 
 
-def render_ffmpeg(piano_file, vo_duration, total_duration):
+def render_ffmpeg(piano_file, vo_duration, total_duration, sentence_start_times):
     raw_vid_duration = get_duration("raw_video.mp4")
     if raw_vid_duration < total_duration and raw_vid_duration > 0.5:
         pts_multiplier = (total_duration + 0.5) / raw_vid_duration
@@ -691,29 +894,40 @@ def render_ffmpeg(piano_file, vo_duration, total_duration):
     max_offset = max(0.0, piano_dur - total_duration - 2.0)
     piano_start = random.uniform(0.0, max_offset) if max_offset > 4.0 else 0.0
 
-    line_items, total_height = prepare_poetic_lines(title, overlay_text)
+    line_items, total_height = prepare_poetic_lines(title, overlay_text, caption, sentence_start_times)
     fade_start = max(total_duration - FADE_DURATION, total_duration - 2.0)
     text_fade_start = max(fade_start - 0.3, 4.0)
     text_fade_end = text_fade_start + 1.3
 
+    base_y = int((1920 - total_height) / 2 - 70)
+    bar_y = max(base_y - 6, 120)
+    bar_h = total_height + 56
+
     drawtext_filters = []
-    for idx, item in enumerate(line_items):
-        start_t = 0.5 + (idx * 0.35)
-        fade_in_end = start_t + 0.85
-        line_alpha = (
-            f"if(lt(t,{start_t:.2f}),0,"
-            f"if(lt(t,{fade_in_end:.2f}),(t-{start_t:.2f})/0.85,"
-            f"if(lt(t,{text_fade_start:.2f}),1,"
-            f"if(lt(t,{text_fade_end:.2f}),({text_fade_end:.2f}-t)/1.3,0))))"
-        )
-        y_offset = f"(h-{total_height})/2-70+{item['rel_y']}"
+    for item in line_items:
+        start_t = item["start_t"]
+        if item.get("instant_header", False):
+            # UPGRADE 4: 100% opacity at Frame 0 (t=0.00s) for Instagram & Facebook Grid Thumbnail
+            line_alpha = (
+                f"if(lt(t,{text_fade_start:.2f}),1,"
+                f"if(lt(t,{text_fade_end:.2f}),({text_fade_end:.2f}-t)/1.3,0))"
+            )
+        else:
+            fade_in_end = start_t + 0.70
+            line_alpha = (
+                f"if(lt(t,{start_t:.2f}),0,"
+                f"if(lt(t,{fade_in_end:.2f}),(t-{start_t:.2f})/0.70,"
+                f"if(lt(t,{text_fade_start:.2f}),1,"
+                f"if(lt(t,{text_fade_end:.2f}),({text_fade_end:.2f}-t)/1.3,0))))"
+            )
+        y_pos = base_y + item["rel_y"]
         drawtext_filters.append(
             f"drawtext=fontfile={item['fontfile']}:"
             f"textfile={item['fname']}:"
             f"fontcolor={item['fontcolor']}:"
             f"fontsize={item['fontsize']}:"
             f"x=76:"
-            f"y={y_offset}:"
+            f"y={y_pos}:"
             f"shadowcolor=black@0.85:shadowx=2:shadowy=3:"
             f"enable='gte(t,{start_t:.2f})':"
             f"alpha='{line_alpha}'"
@@ -722,7 +936,28 @@ def render_ffmpeg(piano_file, vo_duration, total_duration):
     drawtext_filters_str = ",".join(drawtext_filters)
     vo_start = VO_START_DELAY
     vo_end = VO_START_DELAY + vo_duration
+    adelay_ms = int(VO_START_DELAY * 1000)
 
+    # UPGRADE 3: Smooth 0.45s Pre-Voice Ducking Ramp & 1.20s Post-Voice Swell Ramp
+    duck_ramp = 0.45
+    swell_ramp = 1.20
+    duck_start = max(0.0, round(vo_start - duck_ramp, 2))
+    swell_end = round(vo_end + swell_ramp, 2)
+
+    piano_vol_expr = (
+        f"if(lt(t,{duck_start:.2f}),0.35,"
+        f"if(lt(t,{vo_start:.2f}),0.35-0.19*((t-{duck_start:.2f})/{duck_ramp:.2f}),"
+        f"if(lt(t,{vo_end:.2f}),0.16,"
+        f"if(lt(t,{swell_end:.2f}),0.16+0.19*((t-{vo_end:.2f})/{swell_ramp:.2f}),0.35))))"
+    )
+    asmr_vol_expr = (
+        f"if(lt(t,{duck_start:.2f}),0.42,"
+        f"if(lt(t,{vo_start:.2f}),0.42-0.22*((t-{duck_start:.2f})/{duck_ramp:.2f}),"
+        f"if(lt(t,{vo_end:.2f}),0.20,"
+        f"if(lt(t,{swell_end:.2f}),0.20+0.22*((t-{vo_end:.2f})/{swell_ramp:.2f}),0.42))))"
+    )
+
+    # UPGRADE 4: Opens directly at Frame 0 (t=0.00s) with Yellow Title, Subtitle, and Gold Bar visible
     v_filter = (
         f"[0:v]setpts={pts_multiplier:.4f}*PTS,"
         f"scale=1080:1920:force_original_aspect_ratio=increase,"
@@ -732,19 +967,20 @@ def render_ffmpeg(piano_file, vo_duration, total_duration):
         f"noise=alls=4:allf=t+u,"
         f"vignette=PI/4,"
         f"drawbox=x=0:y=0:w=iw:h=ih:color=black@0.46:t=fill,"
+        f"drawbox=x=50:y={bar_y}:w=3:h={bar_h}:color=#FFD700@0.65:t=fill:enable='between(t,0.00,{text_fade_end:.2f})',"
         f"{drawtext_filters_str},"
-        f"fade=t=in:st=0:d=0.5,fade=t=out:st={fade_start:.2f}:d={FADE_DURATION}[v]"
+        f"fade=t=out:st={fade_start:.2f}:d={FADE_DURATION}[v]"
     )
 
     a_filter = (
         f"[1:a]aformat=sample_rates=44100:channel_layouts=stereo,"
-        f"lowpass=f=3000,volume='if(between(t,{vo_start:.2f},{vo_end:.2f}),0.16,0.35)':eval=frame[piano];"
+        f"lowpass=f=3000,volume='{piano_vol_expr}':eval=frame[piano];"
         f"[2:a]aformat=sample_rates=44100:channel_layouts=stereo,"
-        f"volume='if(between(t,{vo_start:.2f},{vo_end:.2f}),0.20,0.42)':eval=frame[asmr];"
+        f"volume='{asmr_vol_expr}':eval=frame[asmr];"
         f"[3:a]aformat=sample_rates=44100:channel_layouts=stereo,"
-        f"adelay=2000|2000,apad=whole_dur={total_duration:.2f}[voice];"
+        f"adelay={adelay_ms}|{adelay_ms},apad=whole_dur={total_duration:.2f}[voice];"
         f"[piano][asmr][voice]amix=inputs=3:duration=first:dropout_transition=0:normalize=0,"
-        f"afade=t=in:st=0:d=1.0,"
+        f"afade=t=in:st=0:d=0.6,"
         f"afade=t=out:st={fade_start:.2f}:d={FADE_DURATION}[a]"
     )
 
@@ -913,13 +1149,13 @@ def upload_video_with_fallback():
 def main():
     ensure_assets()
 
-    # Step 1: Generate Voiceover FIRST (100% pure 55% af_nicole + 45% af_heart with phonetic map)
-    generate_kokoro_asmr_voiceover(title, overlay_text, caption)
+    # Step 1: Generate Voiceover FIRST (with Upgrade 5 closing pause, cadence & reverb tail)
+    sentence_start_times = generate_kokoro_asmr_voiceover(title, overlay_text, caption)
     vo_duration = get_duration("voice.mp3")
 
-    # Step 2: Calculate Dynamic Total Video Duration = 2.0s intro + full voiceover + 4.0s extra tail
+    # Step 2: Calculate Dynamic Total Video Duration = 0.6s fast-hook intro + full voiceover + 4.0s extra tail
     total_duration = max(12.0, round(VO_START_DELAY + vo_duration + EXTRA_TAIL_SECONDS, 2))
-    print(f"Voiceover length: {vo_duration:.2f}s -> Dynamic Total Video Duration set to: {total_duration:.2f}s (includes +4.0s tail)")
+    print(f"Voiceover length: {vo_duration:.2f}s -> Dynamic Total Video Duration set to: {total_duration:.2f}s (0.6s intro + 4.0s tail)")
 
     # Step 3: Download/generate visual & audio tracks matched to total_duration
     matched_niche = detect_niche_keyword()
@@ -927,8 +1163,8 @@ def main():
     fetch_asmr_audio(matched_niche, total_duration)
     piano_file = fetch_relaxing_piano(total_duration)
 
-    # Step 4: Render final video with Yellow Title header, left-aligned poetic layout, and dynamic duration
-    render_ffmpeg(piano_file, vo_duration, total_duration)
+    # Step 4: Render final video with 0.6s Fast Hook + All 5 Upgrades (1, 2, 3, 4 & 5)
+    render_ffmpeg(piano_file, vo_duration, total_duration, sentence_start_times)
     video_url = upload_video_with_fallback()
     print(f"Final Hosted Video URL: {video_url}")
 
