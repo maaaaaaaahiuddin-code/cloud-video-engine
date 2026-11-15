@@ -69,7 +69,7 @@ caption = str(payload.get(
 PIXABAY_API_KEY = os.environ.get("PIXABAY_API_KEY", "").strip().strip('"').strip("'")
 FREESOUND_API_KEY = os.environ.get("FREESOUND_API_KEY", "").strip().strip('"').strip("'")
 
-# Your direct Make.com US2 Webhook URL (built-in so it never fails even if GitHub Secret is empty)
+# Built-in US2 Make.com Webhook URL + Secret support
 PRIMARY_MAKE_WEBHOOK = "https://hook.us2.make.com/ga5opcigaf8fw3keq4zh5x5uy2r6gs24"
 raw_webhook = os.environ.get("MAKE_WEBHOOK_URL", "").strip().strip('"').strip("'")
 if raw_webhook.startswith("MAKE_WEBHOOK_URL="):
@@ -80,7 +80,6 @@ VO_START_DELAY = 2.0        # Voiceover starts at 2.0 seconds
 EXTRA_TAIL_SECONDS = 4.0    # Extra 4.0 seconds of calm ASMR + Piano after voiceover finishes
 FADE_DURATION = 1.5         # Smooth 1.5s fade-out at the very end
 
-# Supports classic nature niches and all 11 niches from words_of_the_world_video_sheet.xlsx
 NICHE_AUDIO_MAP = {
     "rain": "gentle rain falling window ambient asmr",
     "ocean": "calm ocean waves beach water ambient",
