@@ -75,29 +75,19 @@ if raw_webhook.startswith("MAKE_WEBHOOK_URL="):
     raw_webhook = raw_webhook.split("MAKE_WEBHOOK_URL=", 1)[1].strip().strip('"').strip("'")
 MAKE_WEBHOOK_URL = raw_webhook if raw_webhook.startswith("http") else PRIMARY_MAKE_WEBHOOK
 
-VO_START_DELAY = 0.6        # Fast-Hook: Voiceover starts at 0.6 seconds (600ms)
-EXTRA_TAIL_SECONDS = 4.0    # Extra 4.0 seconds of calm ASMR + Piano after voiceover finishes
-FADE_DURATION = 1.5         # Smooth 1.5s fade-out at the very end
+VO_START_DELAY = 0.6          # Fast-Hook: Voiceover starts at 0.6 seconds (600ms)
+EXTRA_TAIL_SECONDS = 4.0      # Extra 4.0 seconds of calm ASMR + Piano after voiceover finishes
+AUDIO_FADE_DURATION = 1.50    # Smooth 1.50s audio fade-out so piano & rain end softly
+VIDEO_FADE_DURATION = 0.35    # 0.35s micro-dissolve for seamless infinite-looping (+1.15s reading time)
 
-# Strict 30-term filter to block AI, CGI, 3D, cartoon, studio, or synthetic clips
-BANNED_VISUAL_TAGS = (
-    "animation", "cartoon", "3d", "cgi", "render", "green screen",
-    "chroma", "isolated", "white background", "business", "office",
-    "commercial", "marketing", "illustration", "comic",
-    "ai", "ai generated", "artificial intelligence", "synthetic",
-    "vfx", "motion graphics", "vector", "graphic", "digital art",
-    "virtual", "fractal", "abstract", "sci-fi", "fantasy", "neon"
-)
-
-# Real-camera nature film backup queries if a specific keyword has no film hits
-REAL_NATURE_FALLBACK_QUERIES = [
-    "calm nature rain",
-    "forest trees wind",
-    "ocean waves beach",
-    "sunset sky clouds",
-    "river water stream",
-    "night sky stars"
-]
+# Strict filter to reject CGI, 3D renders, cartoons, AI, and abstract loops on Pixabay
+BANNED_VISUAL_TAGS = {
+    "animation", "animated", "cartoon", "anime", "3d", "cgi", "render",
+    "illustration", "drawing", "sketch", "painting", "art", "abstract",
+    "fractal", "vj", "neon", "cyberpunk", "sci-fi", "fantasy", "ai",
+    "generated", "digital", "graphic", "motion graphics", "particles",
+    "matrix", "tunnel", "kaleidoscope", "geometry", "game", "virtual"
+}
 
 NICHE_AUDIO_MAP = {
     "rain": "gentle rain falling window ambient asmr",
@@ -443,7 +433,10 @@ def get_font_for_text(line_text):
 
 
 def build_editorial_subtitle(title_str, overlay_str, caption_str):
-    """Builds the editorial '[ Language  •  pronunciation ]' sub-header shown below the Yellow Title."""
+    """
+    UPGRADE 2: Builds the editorial '[ Language  •  pronunciation ]' sub-header
+    shown directly below the Yellow Title.
+    """
     lang_label = ""
     first_line = caption_str.splitlines()[0] if caption_str else ""
     if "|" in first_line:
@@ -471,18 +464,16 @@ def build_editorial_subtitle(title_str, overlay_str, caption_str):
 
 def prepare_poetic_lines(title_text, body_text, caption_text, sentence_start_times=None):
     """
-    Combines all layout & retention upgrades on the clean full-screen 46% matte:
-      - Frame-0 Instant Header (Yellow Title #FFD700 + Editorial Subtitle #E6C687)
-      - 2px Golden Reading-Progress Thread position (prog_rel_y)
-      - Active 'Karaoke / Kindle' Stanza Spotlight (100% active -> 68% after next sentence starts)
-      - Highlighted Closing Takeaway / Share Stanza in Warm Gold (#FFE599) with +12px top separation
+    UPGRADES 1, 2 & 4 + 0.6s Fast-Hook Layout:
+      1) Yellow Title (#FFD700, fontsize=58) locked at 100% opacity on Frame 0 (t=0.00s) for IG/FB Grid Cover
+      2) Editorial Sub-Header '[ Language • Pronunciation ]' (#E6C687, fontsize=32) locked at 100% opacity on Frame 0 (t=0.00s)
+      3) Overlay_Text stanzas (#f5f5f3, fontsize=45) fade in line-by-line synced to each spoken sentence (starting at t=0.60s)
     """
     items = []
     current_y = 0
     file_idx = 0
-    prog_rel_y = 60
 
-    # --- 1. YELLOW TITLE BLOCK (100% visible at t=0.00s for IG/FB Thumbnail Cover) ---
+    # --- 1. YELLOW TITLE BLOCK (UPGRADE 4: 100% visible at t=0.00s for IG/FB Thumbnail Cover) ---
     clean_title = (title_text or "").strip()
     if clean_title:
         title_wrapped = textwrap.wrap(clean_title, width=22) or [clean_title]
@@ -499,13 +490,12 @@ def prepare_poetic_lines(title_text, body_text, caption_text, sentence_start_tim
                 "fontcolor": "#FFD700",
                 "fontfile": get_font_for_text(t_line),
                 "start_t": 0.00,
-                "dim_t": None,
                 "instant_header": True
             })
             current_y += title_line_height
             file_idx += 1
 
-        # --- 2. EDITORIAL SUB-HEADER '[ Language  •  Pronunciation ]' ---
+        # --- 2. EDITORIAL SUB-HEADER '[ Language  •  Pronunciation ]' (UPGRADE 4: 100% visible at t=0.00s) ---
         subtitle_str = build_editorial_subtitle(title_text, body_text, caption_text)
         if subtitle_str:
             fname = f"quote_line_{file_idx}.txt"
@@ -518,17 +508,14 @@ def prepare_poetic_lines(title_text, body_text, caption_text, sentence_start_tim
                 "fontcolor": "#E6C687",   # Soft Champagne Gold
                 "fontfile": get_font_for_text(subtitle_str),
                 "start_t": 0.00,
-                "dim_t": None,
                 "instant_header": True
             })
-            prog_rel_y = current_y + 54   # 2px Golden Progress Thread sits right under subtitle
-            current_y += 44 + 46          # Subtitle height (44px) + gap before body text (46px)
+            current_y += 44 + 42          # Subtitle height (44px) + gap before body text (42px)
             file_idx += 1
         else:
-            prog_rel_y = current_y + 20
             current_y += 50
 
-    # --- 3. OVERLAY_TEXT BLOCK (Active Stanza Spotlight + Warm Gold Final Takeaway Stanza) ---
+    # --- 3. OVERLAY_TEXT BLOCK (Each stanza synced to its voiceover sentence timestamp) ---
     cleaned = (body_text or "").replace("\r\n", "\n").replace("\u2028", "\n").replace("\u2029", "\n").strip()
     if not cleaned:
         cleaned = "Peace comes from within.\nDo not seek it without."
@@ -541,27 +528,14 @@ def prepare_poetic_lines(title_text, body_text, caption_text, sentence_start_tim
 
     line_height = 58
     stanza_gap = 34
-    num_stanzas = len(stanzas)
 
     for s_idx, stanza in enumerate(stanzas):
-        is_final_stanza = (s_idx == num_stanzas - 1 and num_stanzas > 1)
-        if is_final_stanza:
-            current_y += 12  # Extra 12px separation before Warm Gold closing takeaway line
-
         if sentence_start_times and s_idx < len(sentence_start_times):
             stanza_base_t = sentence_start_times[s_idx]
         elif sentence_start_times:
             stanza_base_t = sentence_start_times[-1] + ((s_idx - len(sentence_start_times) + 1) * 3.0)
         else:
             stanza_base_t = VO_START_DELAY + (s_idx * 3.2)
-
-        # Spotlight dimming timestamp: dim this stanza to 68% when the next stanza starts speaking
-        if not is_final_stanza and sentence_start_times and (s_idx + 1) < len(sentence_start_times):
-            next_stanza_t = sentence_start_times[s_idx + 1]
-        else:
-            next_stanza_t = None
-
-        stanza_color = "#FFE599" if is_final_stanza else "#f5f5f3"
 
         line_in_stanza = 0
         for raw_line in stanza.split("\n"):
@@ -577,21 +551,20 @@ def prepare_poetic_lines(title_text, body_text, caption_text, sentence_start_tim
                     "fname": fname,
                     "rel_y": current_y,
                     "fontsize": 45,
-                    "fontcolor": stanza_color,
+                    "fontcolor": "#f5f5f3",
                     "fontfile": get_font_for_text(w_line),
                     "start_t": round(stanza_base_t + (line_in_stanza * 0.28), 2),
-                    "dim_t": next_stanza_t,
                     "instant_header": False
                 })
                 current_y += line_height
                 file_idx += 1
                 line_in_stanza += 1
 
-        if s_idx < num_stanzas - 1:
+        if s_idx < len(stanzas) - 1:
             current_y += stanza_gap
 
     total_height = max(current_y - line_height, 60)
-    return items, total_height, prog_rel_y
+    return items, total_height
 
 
 def get_duration(filename):
@@ -630,6 +603,10 @@ def generate_kokoro_asmr_voiceover(title_word, text, caption_text):
     """
     Generates the 55% af_nicole + 45% af_heart voiceover AND returns the exact
     video timestamp (in seconds) where each sentence begins speaking.
+    Includes UPGRADE 5:
+      - 1.45s pre-closing-sentence meditative pause (vs 1.10s between body sentences)
+      - 0.79x slower delivery on the final closing sentence (vs 0.83x on body sentences)
+      - 0.80s silence tail pad + warm studio room reverb (aecho) in the 12ms Ribbon-Mic chain
     """
     spoken_text = prepare_spoken_script(title_word, text, caption_text)
     chunks = re.split(r'(?<=[.!?])\s+|\n+', spoken_text.replace("\r", ""))
@@ -750,74 +727,82 @@ def detect_niche_keyword():
     return "rain"
 
 
-def query_pixabay_real_film(query_str, orientation="vertical"):
-    """Queries Pixabay strictly for real camera film footage (video_type=film) and filters out banned tags."""
-    if not query_str:
-        return None
-    q = urllib.parse.quote(query_str.strip())
-    orient_param = f"&orientation={orientation}" if orientation in ("vertical", "horizontal") else ""
-    url = (
-        f"https://pixabay.com/api/videos/?key={PIXABAY_API_KEY}"
-        f"&q={q}{orient_param}&video_type=film&per_page=25&safesearch=true"
-    )
-    r = requests.get(url, timeout=20)
-    raw_hits = r.json().get("hits", []) if r.status_code == 200 else []
+def is_real_camera_footage(hit):
+    """
+    MODIFICATION 1: Enforces 100% real camera footage by checking Pixabay hit type & tags
+    against BANNED_VISUAL_TAGS (rejects 3D, CGI, animation, AI, cartoon, and abstract clips).
+    """
+    hit_type = str(hit.get("type", "")).lower()
+    if "animation" in hit_type or "illustration" in hit_type:
+        return False
 
-    # Strictly keep real film clips without any AI/CGI/animation/studio tags
-    clean_hits = [
-        h for h in raw_hits
-        if h.get("type", "film") == "film"
-        and not any(bad in h.get("tags", "").lower() for bad in BANNED_VISUAL_TAGS)
-    ]
-    if clean_hits:
-        return random.choice(clean_hits)
-    return None
+    tags_str = str(hit.get("tags", "")).lower()
+    tag_tokens = {t.strip() for t in tags_str.split(",") if t.strip()}
+    for banned in BANNED_VISUAL_TAGS:
+        if banned in tag_tokens or re.search(rf'\b{re.escape(banned)}\b', tags_str):
+            return False
+    return True
 
 
 def download_visual_background(target_duration):
     """
-    100% Real Camera Footage Only:
-      - Never uses Pollinations AI or synthetic image generators.
-      - Searches vertical real film first, then horizontal/all real film (auto-cropped to 9:16 by FFmpeg),
-        then guaranteed real nature film queries.
+    MODIFICATION 1: Uses ONLY real camera footage (video_type=film + BANNED_VISUAL_TAGS filter).
+    Never uses Pollinations AI or synthetic image generation.
     """
-    if not PIXABAY_API_KEY:
-        raise RuntimeError("PIXABAY_API_KEY is required to download real camera footage!")
-
-    search_plan = [
-        # Stage 1: Exact sheet keywords in vertical real-camera film
-        (search_keyword, "vertical"),
-        (fallback_keyword, "vertical"),
-        # Stage 2: Exact sheet keywords in any orientation real-camera film (FFmpeg center-crops to 1080x1920)
-        (search_keyword, "all"),
-        (fallback_keyword, "all"),
-    ]
-    # Stage 3: Guaranteed real-camera nature film backups
-    for nat_q in REAL_NATURE_FALLBACK_QUERIES:
-        search_plan.append((nat_q, "vertical"))
-        search_plan.append((nat_q, "all"))
-
-    for q_text, orient in search_plan:
+    if PIXABAY_API_KEY:
         try:
-            chosen_hit = query_pixabay_real_film(q_text, orientation=orient)
-            if chosen_hit:
-                vids = chosen_hit.get("videos", {})
-                v_url = (
-                    vids.get("large", {}).get("url")
-                    or vids.get("medium", {}).get("url")
-                    or vids.get("small", {}).get("url")
-                )
-                if v_url:
-                    vid_data = requests.get(v_url, timeout=60).content
-                    if len(vid_data) > 50_000:
-                        with open("raw_video.mp4", "wb") as f:
-                            f.write(vid_data)
-                        print(f"Downloaded real camera footage from Pixabay (query='{q_text}', orientation='{orient}').")
-                        return
-        except Exception as e:
-            print(f"Pixabay real-film search attempt skipped ({q_text}): {e}")
+            real_footage_queries = [
+                urllib.parse.quote(search_keyword),
+                urllib.parse.quote(fallback_keyword),
+                "calm+nature+rain",
+                "rain+drops+window",
+                "ocean+waves+beach",
+                "forest+trees+wind",
+                "river+stream+water",
+                "sunset+clouds+sky"
+            ]
 
-    raise RuntimeError("Could not download real camera footage from Pixabay across all queries!")
+            # Pass 1: Vertical real camera footage (orientation=vertical & video_type=film)
+            # Pass 2: Any aspect ratio real camera footage (video_type=film, cropped to 1080x1920 by FFmpeg)
+            for orientation_param in ["&orientation=vertical", ""]:
+                for q in real_footage_queries:
+                    if not q:
+                        continue
+                    url = (
+                        f"https://pixabay.com/api/videos/?key={PIXABAY_API_KEY}"
+                        f"&q={q}&video_type=film{orientation_param}&per_page=25&safesearch=true"
+                    )
+                    r = requests.get(url, timeout=20)
+                    raw_hits = r.json().get("hits", []) if r.status_code == 200 else []
+                    real_hits = [h for h in raw_hits if is_real_camera_footage(h)]
+
+                    if real_hits:
+                        random.shuffle(real_hits)
+                        for chosen in real_hits[:5]:
+                            vids = chosen.get("videos", {})
+                            v_url = (
+                                vids.get("large", {}).get("url")
+                                or vids.get("medium", {}).get("url")
+                                or vids.get("small", {}).get("url")
+                            )
+                            if v_url:
+                                vid_data = requests.get(v_url, timeout=60).content
+                                if len(vid_data) > 50_000:
+                                    with open("raw_video.mp4", "wb") as f:
+                                        f.write(vid_data)
+                                    print(f"Downloaded verified REAL camera footage from Pixabay (query='{q}', tags='{chosen.get('tags', '')}').")
+                                    return
+        except Exception as e:
+            print(f"Pixabay real footage search warning: {e}")
+
+    # Pure dark matte canvas emergency fallback (only if Pixabay API key is missing/unreachable; zero AI images)
+    subprocess.run([
+        "ffmpeg", "-y", "-f", "lavfi",
+        "-i", f"color=c=#0d1b2a:s=1080x1920:r=30:d={target_duration:.2f}",
+        "-vf", "noise=alls=8:allf=t+u",
+        "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
+        "raw_video.mp4"
+    ], check=True)
 
 
 def fetch_asmr_audio(matched_key, target_duration):
@@ -925,47 +910,34 @@ def render_ffmpeg(piano_file, vo_duration, total_duration, sentence_start_times)
     max_offset = max(0.0, piano_dur - total_duration - 2.0)
     piano_start = random.uniform(0.0, max_offset) if max_offset > 4.0 else 0.0
 
-    line_items, total_height, prog_rel_y = prepare_poetic_lines(title, overlay_text, caption, sentence_start_times)
-    fade_start = max(total_duration - FADE_DURATION, total_duration - 2.0)
-    text_fade_start = max(fade_start - 0.3, 4.0)
-    text_fade_end = text_fade_start + 1.3
+    line_items, total_height = prepare_poetic_lines(title, overlay_text, caption, sentence_start_times)
+
+    # MODIFICATION 2: Separate 1.50s Audio Fade-Out from 0.35s Visual Micro-Dissolve (+1.15s extra reading time)
+    audio_fade_start = max(total_duration - AUDIO_FADE_DURATION, total_duration - 2.0)
+    video_fade_start = max(total_duration - VIDEO_FADE_DURATION, 1.0)
+    text_fade_start = max(video_fade_start - 0.30, 4.0)
+    text_fade_end = text_fade_start + 0.35
 
     base_y = int((1920 - total_height) / 2 - 70)
     bar_y = max(base_y - 6, 120)
     bar_h = total_height + 56
-    prog_y = base_y + prog_rel_y
 
     drawtext_filters = []
     for item in line_items:
         start_t = item["start_t"]
-        dim_t = item.get("dim_t")
         if item.get("instant_header", False):
-            # 100% opacity at Frame 0 (t=0.00s) for Instagram & Facebook Grid Thumbnail
+            # UPGRADE 4 + MODIFICATION 2: 100% opacity at Frame 0 (t=0.00s) and holds until the 0.35s micro-dissolve
             line_alpha = (
                 f"if(lt(t,{text_fade_start:.2f}),1,"
-                f"if(lt(t,{text_fade_end:.2f}),({text_fade_end:.2f}-t)/1.30,0))"
-            )
-        elif dim_t is not None:
-            # Active 'Karaoke / Kindle' Stanza Spotlight: 100% while spoken -> dims to 68% when next stanza begins
-            fade_in_end = start_t + 0.70
-            dim_start = max(dim_t, fade_in_end + 0.15)
-            dim_end = dim_start + 0.50
-            line_alpha = (
-                f"if(lt(t,{start_t:.2f}),0,"
-                f"if(lt(t,{fade_in_end:.2f}),(t-{start_t:.2f})/0.70,"
-                f"if(lt(t,{dim_start:.2f}),1,"
-                f"if(lt(t,{dim_end:.2f}),1-0.32*((t-{dim_start:.2f})/0.50),"
-                f"if(lt(t,{text_fade_start:.2f}),0.68,"
-                f"if(lt(t,{text_fade_end:.2f}),0.68*(({text_fade_end:.2f}-t)/1.30),0))))))"
+                f"if(lt(t,{text_fade_end:.2f}),({text_fade_end:.2f}-t)/0.35,0))"
             )
         else:
-            # Final Warm Gold Takeaway Stanza stays at 100% spotlight until final fade-out
             fade_in_end = start_t + 0.70
             line_alpha = (
                 f"if(lt(t,{start_t:.2f}),0,"
                 f"if(lt(t,{fade_in_end:.2f}),(t-{start_t:.2f})/0.70,"
                 f"if(lt(t,{text_fade_start:.2f}),1,"
-                f"if(lt(t,{text_fade_end:.2f}),({text_fade_end:.2f}-t)/1.30,0))))"
+                f"if(lt(t,{text_fade_end:.2f}),({text_fade_end:.2f}-t)/0.35,0))))"
             )
         y_pos = base_y + item["rel_y"]
         drawtext_filters.append(
@@ -985,22 +957,7 @@ def render_ffmpeg(piano_file, vo_duration, total_duration, sentence_start_times)
     vo_end = VO_START_DELAY + vo_duration
     adelay_ms = int(VO_START_DELAY * 1000)
 
-    # 2px Animated Golden Reading-Progress Thread (32 smooth 29px steps = 928px total width)
-    progress_boxes = [
-        f"drawbox=x=76:y={prog_y}:w=928:h=2:color=#FFD700@0.20:t=fill:enable='between(t,0.00,{text_fade_end:.2f})'"
-    ]
-    num_steps = 32
-    step_w = 29
-    active_vo_span = max(vo_duration - 0.80, 4.0)
-    for step in range(num_steps):
-        step_x = 76 + (step * step_w)
-        step_t = round(vo_start + (step / float(num_steps)) * active_vo_span, 2)
-        progress_boxes.append(
-            f"drawbox=x={step_x}:y={prog_y}:w={step_w}:h=2:color=#FFD700@0.85:t=fill:enable='between(t,{step_t:.2f},{text_fade_end:.2f})'"
-        )
-    progress_boxes_str = ",".join(progress_boxes)
-
-    # Smooth 0.45s Pre-Voice Ducking Ramp & 1.20s Post-Voice Swell Ramp
+    # UPGRADE 3: Smooth 0.45s Pre-Voice Ducking Ramp & 1.20s Post-Voice Swell Ramp
     duck_ramp = 0.45
     swell_ramp = 1.20
     duck_start = max(0.0, round(vo_start - duck_ramp, 2))
@@ -1019,7 +976,7 @@ def render_ffmpeg(piano_file, vo_duration, total_duration, sentence_start_times)
         f"if(lt(t,{swell_end:.2f}),0.20+0.22*((t-{vo_end:.2f})/{swell_ramp:.2f}),0.42))))"
     )
 
-    # Clean 46% full-screen dark matte (black@0.46) with no floating card
+    # MODIFICATION 2: Visual fade-out shortened to 0.35s (VIDEO_FADE_DURATION) for seamless infinite loop
     v_filter = (
         f"[0:v]setpts={pts_multiplier:.4f}*PTS,"
         f"scale=1080:1920:force_original_aspect_ratio=increase,"
@@ -1030,21 +987,23 @@ def render_ffmpeg(piano_file, vo_duration, total_duration, sentence_start_times)
         f"vignette=PI/4,"
         f"drawbox=x=0:y=0:w=iw:h=ih:color=black@0.46:t=fill,"
         f"drawbox=x=50:y={bar_y}:w=3:h={bar_h}:color=#FFD700@0.65:t=fill:enable='between(t,0.00,{text_fade_end:.2f})',"
-        f"{progress_boxes_str},"
         f"{drawtext_filters_str},"
-        f"fade=t=out:st={fade_start:.2f}:d={FADE_DURATION}[v]"
+        f"fade=t=out:st={video_fade_start:.2f}:d={VIDEO_FADE_DURATION}[v]"
     )
 
+    # MODIFICATION 3: Added apulsator=mode=sine:hz=0.08:amount=0.25 (12.5s 3D binaural drift) to [asmr]
+    # while keeping the 1.50s (AUDIO_FADE_DURATION) master audio fade-out
     a_filter = (
         f"[1:a]aformat=sample_rates=44100:channel_layouts=stereo,"
         f"lowpass=f=3000,volume='{piano_vol_expr}':eval=frame[piano];"
         f"[2:a]aformat=sample_rates=44100:channel_layouts=stereo,"
+        f"apulsator=mode=sine:hz=0.08:amount=0.25,"
         f"volume='{asmr_vol_expr}':eval=frame[asmr];"
         f"[3:a]aformat=sample_rates=44100:channel_layouts=stereo,"
         f"adelay={adelay_ms}|{adelay_ms},apad=whole_dur={total_duration:.2f}[voice];"
         f"[piano][asmr][voice]amix=inputs=3:duration=first:dropout_transition=0:normalize=0,"
         f"afade=t=in:st=0:d=0.6,"
-        f"afade=t=out:st={fade_start:.2f}:d={FADE_DURATION}[a]"
+        f"afade=t=out:st={audio_fade_start:.2f}:d={AUDIO_FADE_DURATION}[a]"
     )
 
     filter_complex = f"{v_filter};{a_filter}"
@@ -1056,3 +1015,204 @@ def render_ffmpeg(piano_file, vo_duration, total_duration, sentence_start_times)
         "-i", "voice.mp3",
         "-filter_complex", filter_complex,
         "-map", "[v]", "-map", "[a]",
+        "-t", f"{total_duration:.2f}",
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "21", "-pix_fmt", "yuv420p",
+        "-c:a", "aac", "-b:a", "192k",
+        "-movflags", "+faststart",
+        "final_output.mp4"
+    ], check=True)
+
+
+def verify_url_accessible(url):
+    """Confirms the MP4 link is publicly downloadable over HTTPS before sending to Make.com."""
+    if not url or not url.startswith("https://"):
+        return False
+    try:
+        r = requests.get(url, stream=True, timeout=20, headers={"User-Agent": "Mozilla/5.0"})
+        ok = r.status_code in (200, 206)
+        r.close()
+        return ok
+    except Exception as e:
+        print(f"URL verification failed for {url}: {e}")
+        return False
+
+
+def upload_to_github_release(filepath):
+    """Uses GITHUB_TOKEN to host final_output.mp4 directly on GitHub Releases CDN."""
+    gh_token = os.environ.get("GITHUB_TOKEN", "").strip()
+    gh_repo = os.environ.get("GITHUB_REPOSITORY", "maaaaaaaahiuddin-code/cloud-video-engine").strip()
+    if not gh_token:
+        return ""
+
+    headers = {
+        "Authorization": f"Bearer {gh_token}",
+        "Accept": "application/vnd.github+json"
+    }
+    tag_name = "rendered-videos"
+    api_base = f"https://api.github.com/repos/{gh_repo}"
+
+    r = requests.get(f"{api_base}/releases/tags/{tag_name}", headers=headers, timeout=20)
+    if r.status_code == 200:
+        release_data = r.json()
+    else:
+        r_create = requests.post(
+            f"{api_base}/releases",
+            headers=headers,
+            json={
+                "tag_name": tag_name,
+                "name": "Automated Cloud Videos",
+                "body": "Hosted MP4 assets for Make.com social publishing.",
+                "draft": False,
+                "prerelease": False
+            },
+            timeout=20
+        )
+        if r_create.status_code not in (200, 201):
+            print(f"GitHub Release creation warning: {r_create.status_code} {r_create.text}")
+            return ""
+        release_data = r_create.json()
+
+    release_id = release_data.get("id")
+    asset_name = f"video_row_{row_id}_{random.randint(1000, 9999)}.mp4"
+
+    upload_url = f"https://uploads.github.com/repos/{gh_repo}/releases/{release_id}/assets?name={asset_name}"
+    upload_headers = {
+        "Authorization": f"Bearer {gh_token}",
+        "Content-Type": "video/mp4",
+        "Accept": "application/vnd.github+json"
+    }
+    with open(filepath, "rb") as f:
+        r_up = requests.post(upload_url, headers=upload_headers, data=f, timeout=120)
+
+    if r_up.status_code in (200, 201):
+        dl_url = r_up.json().get("browser_download_url", "")
+        if verify_url_accessible(dl_url):
+            print(f"Uploaded to GitHub Releases CDN successfully: {dl_url}")
+            return dl_url
+    else:
+        print(f"GitHub Release asset upload warning: {r_up.status_code} {r_up.text}")
+    return ""
+
+
+def upload_video_with_fallback():
+    if os.environ.get("CLOUDINARY_URL", "").startswith("cloudinary://"):
+        try:
+            res = cloudinary.uploader.upload(
+                "final_output.mp4",
+                resource_type="video",
+                folder="auto_relaxing_videos",
+                timeout=120
+            )
+            video_url = res.get("secure_url", "")
+            if verify_url_accessible(video_url):
+                print(f"Uploaded to Cloudinary successfully: {video_url}")
+                return video_url
+        except Exception as e:
+            print(f"Cloudinary upload skipped ({e}). Trying GitHub Release CDN...")
+
+    try:
+        gh_url = upload_to_github_release("final_output.mp4")
+        if gh_url:
+            return gh_url
+    except Exception as e_gh:
+        print(f"GitHub Release upload skipped: {e_gh}")
+
+    try:
+        with open("final_output.mp4", "rb") as f:
+            r = requests.post(
+                "https://tmpfiles.org/api/v1/upload",
+                files={"file": ("final_output.mp4", f, "video/mp4")},
+                timeout=60
+            )
+        if r.status_code == 200:
+            raw_url = r.json().get("data", {}).get("url", "")
+            if raw_url:
+                direct_url = raw_url.replace("http://", "https://", 1).replace("tmpfiles.org/", "tmpfiles.org/dl/", 1)
+                if verify_url_accessible(direct_url):
+                    print(f"Uploaded to tmpfiles.org (HTTPS) successfully: {direct_url}")
+                    return direct_url
+    except Exception as e_tmp:
+        print(f"tmpfiles backup failed: {e_tmp}")
+
+    try:
+        with open("final_output.mp4", "rb") as f:
+            r = requests.post(
+                "https://0x0.st",
+                files={"file": ("final_output.mp4", f, "video/mp4")},
+                headers={"User-Agent": "CloudVideoRenderer/1.0"},
+                timeout=60
+            )
+        if r.status_code == 200 and r.text.strip().startswith("https://"):
+            url = r.text.strip()
+            if verify_url_accessible(url):
+                print(f"Uploaded to 0x0.st successfully: {url}")
+                return url
+    except Exception as e_0x0:
+        print(f"0x0.st backup failed: {e_0x0}")
+
+    try:
+        with open("final_output.mp4", "rb") as f:
+            r = requests.post(
+                "https://litterbox.catbox.moe/resources/internals/api.php",
+                data={"reqtype": "fileupload", "time": "72h"},
+                files={"fileToUpload": ("final_output.mp4", f, "video/mp4")},
+                timeout=60
+            )
+        if r.status_code == 200 and r.text.strip().startswith("https://"):
+            url = r.text.strip()
+            print(f"Uploaded to Litterbox successfully: {url}")
+            return url
+    except Exception as e_lit:
+        print(f"Litterbox backup failed: {e_lit}")
+
+    return ""
+
+
+def main():
+    ensure_assets()
+
+    # Step 1: Generate Voiceover FIRST (with Upgrade 5 closing pause, cadence & reverb tail)
+    sentence_start_times = generate_kokoro_asmr_voiceover(title, overlay_text, caption)
+    vo_duration = get_duration("voice.mp3")
+
+    # Step 2: Calculate Dynamic Total Video Duration = 0.6s fast-hook intro + full voiceover + 4.0s extra tail
+    total_duration = max(12.0, round(VO_START_DELAY + vo_duration + EXTRA_TAIL_SECONDS, 2))
+    print(f"Voiceover length: {vo_duration:.2f}s -> Dynamic Total Video Duration set to: {total_duration:.2f}s (0.6s intro + 4.0s tail)")
+
+    # Step 3: Download verified real camera footage & audio tracks matched to total_duration
+    matched_niche = detect_niche_keyword()
+    download_visual_background(total_duration)
+    fetch_asmr_audio(matched_niche, total_duration)
+    piano_file = fetch_relaxing_piano(total_duration)
+
+    # Step 4: Render final video with 0.35s loop micro-dissolve & 3D binaural ASMR drift
+    render_ffmpeg(piano_file, vo_duration, total_duration, sentence_start_times)
+    video_url = upload_video_with_fallback()
+    print(f"Final Hosted Video URL: {video_url}")
+
+    if not video_url or not video_url.startswith("http"):
+        raise RuntimeError("Video upload failed across all hosts; no valid video_url to send to Make.com!")
+
+    webhook_payload = {
+        "row_id": row_id,
+        "title": title,
+        "video_url": video_url,
+        "caption": caption
+    }
+
+    target_webhooks = [PRIMARY_MAKE_WEBHOOK]
+    if MAKE_WEBHOOK_URL.startswith("http") and MAKE_WEBHOOK_URL != PRIMARY_MAKE_WEBHOOK:
+        target_webhooks.append(MAKE_WEBHOOK_URL)
+
+    for wh_url in target_webhooks:
+        resp = requests.post(
+            wh_url,
+            json=webhook_payload,
+            headers={"Content-Type": "application/json"},
+            timeout=30
+        )
+        print(f"Sent webhook to {wh_url} -> Status: {resp.status_code} | Response: {resp.text}")
+
+
+if __name__ == "__main__":
+    main()
