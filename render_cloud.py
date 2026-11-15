@@ -451,7 +451,7 @@ def build_editorial_subtitle(title_str, overlay_str, caption_str):
 
 def prepare_poetic_lines(title_text, body_text, caption_text, sentence_start_times=None):
     """
-    Combines all layout & retention upgrades:
+    Combines all layout & retention upgrades on the clean full-screen 46% matte:
       - Frame-0 Instant Header (Yellow Title #FFD700 + Editorial Subtitle #E6C687)
       - 2px Golden Reading-Progress Thread position (prog_rel_y)
       - Active 'Karaoke / Kindle' Stanza Spotlight (100% active -> 68% after next sentence starts)
@@ -912,10 +912,6 @@ def render_ffmpeg(piano_file, vo_duration, total_duration, sentence_start_times)
     base_y = int((1920 - total_height) / 2 - 70)
     bar_y = max(base_y - 6, 120)
     bar_h = total_height + 56
-
-    # Floating Editorial Card coordinates (x=28, w=1024, 36px top/bottom padding)
-    card_y = max(base_y - 36, 80)
-    card_h = total_height + 48 + 72
     prog_y = base_y + prog_rel_y
 
     drawtext_filters = []
@@ -1002,18 +998,17 @@ def render_ffmpeg(piano_file, vo_duration, total_duration, sentence_start_times)
         f"if(lt(t,{swell_end:.2f}),0.20+0.22*((t-{vo_end:.2f})/{swell_ramp:.2f}),0.42))))"
     )
 
-    # Brighter Nature Visuals (22% global dim) + Floating Editorial Card (42% card dim) + Gold Progress Thread
+    # Restored original clean 46% full-screen dark matte (black@0.46) with no floating card
     v_filter = (
         f"[0:v]setpts={pts_multiplier:.4f}*PTS,"
         f"scale=1080:1920:force_original_aspect_ratio=increase,"
         f"crop=1080:1920,setsar=1,fps=30,"
-        f"eq=brightness=-0.03:contrast=1.08:saturation=0.86,"
+        f"eq=brightness=-0.05:contrast=1.08:saturation=0.82,"
         f"colorbalance=rs=-0.02:bs=0.03:rh=0.03:gh=0.01:bh=-0.02,"
         f"noise=alls=4:allf=t+u,"
         f"vignette=PI/4,"
-        f"drawbox=x=0:y=0:w=iw:h=ih:color=black@0.22:t=fill,"
-        f"drawbox=x=28:y={card_y}:w=1024:h={card_h}:color=black@0.42:t=fill:enable='between(t,0.00,{text_fade_end:.2f})',"
-        f"drawbox=x=50:y={bar_y}:w=3:h={bar_h}:color=#FFD700@0.70:t=fill:enable='between(t,0.00,{text_fade_end:.2f})',"
+        f"drawbox=x=0:y=0:w=iw:h=ih:color=black@0.46:t=fill,"
+        f"drawbox=x=50:y={bar_y}:w=3:h={bar_h}:color=#FFD700@0.65:t=fill:enable='between(t,0.00,{text_fade_end:.2f})',"
         f"{progress_boxes_str},"
         f"{drawtext_filters_str},"
         f"fade=t=out:st={fade_start:.2f}:d={FADE_DURATION}[v]"
@@ -1210,7 +1205,7 @@ def main():
     fetch_asmr_audio(matched_niche, total_duration)
     piano_file = fetch_relaxing_piano(total_duration)
 
-    # Step 4: Render final video with all 9 upgrades combined
+    # Step 4: Render final video with clean 46% full-screen matte (no floating card)
     render_ffmpeg(piano_file, vo_duration, total_duration, sentence_start_times)
     video_url = upload_video_with_fallback()
     print(f"Final Hosted Video URL: {video_url}")
