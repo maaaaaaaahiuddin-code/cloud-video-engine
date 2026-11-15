@@ -24,9 +24,9 @@ except ImportError:
     from kokoro_onnx import Kokoro
 
 # 1. Auto-sanitize CLOUDINARY_URL BEFORE importing cloudinary
-raw_cloud = os.environ.get("CLOUDINARY_URL", "").strip()
+raw_cloud = os.environ.get("CLOUDINARY_URL", "").strip().strip('"').strip("'")
 if raw_cloud.startswith("CLOUDINARY_URL="):
-    raw_cloud = raw_cloud.split("CLOUDINARY_URL=", 1)[1].strip()
+    raw_cloud = raw_cloud.split("CLOUDINARY_URL=", 1)[1].strip().strip('"').strip("'")
 os.environ["CLOUDINARY_URL"] = raw_cloud
 
 import cloudinary
@@ -66,15 +66,21 @@ caption = str(payload.get(
     "Dépaysement | French\nThe dizzy feeling of being far from everything familiar. #wordsoftheworld #reels"
 )).strip()
 
-PIXABAY_API_KEY = os.environ.get("PIXABAY_API_KEY", "").strip()
-FREESOUND_API_KEY = os.environ.get("FREESOUND_API_KEY", "").strip()
-MAKE_WEBHOOK_URL = os.environ.get("MAKE_WEBHOOK_URL", "").strip()
+PIXABAY_API_KEY = os.environ.get("PIXABAY_API_KEY", "").strip().strip('"').strip("'")
+FREESOUND_API_KEY = os.environ.get("FREESOUND_API_KEY", "").strip().strip('"').strip("'")
+
+# Your direct Make.com US2 Webhook URL (built-in so it never fails even if GitHub Secret is empty)
+PRIMARY_MAKE_WEBHOOK = "https://hook.us2.make.com/ga5opcigaf8fw3keq4zh5x5uy2r6gs24"
+raw_webhook = os.environ.get("MAKE_WEBHOOK_URL", "").strip().strip('"').strip("'")
+if raw_webhook.startswith("MAKE_WEBHOOK_URL="):
+    raw_webhook = raw_webhook.split("MAKE_WEBHOOK_URL=", 1)[1].strip().strip('"').strip("'")
+MAKE_WEBHOOK_URL = raw_webhook if raw_webhook.startswith("http") else PRIMARY_MAKE_WEBHOOK
 
 VO_START_DELAY = 2.0        # Voiceover starts at 2.0 seconds
 EXTRA_TAIL_SECONDS = 4.0    # Extra 4.0 seconds of calm ASMR + Piano after voiceover finishes
 FADE_DURATION = 1.5         # Smooth 1.5s fade-out at the very end
 
-# Supports both classic nature niches and the 11 emotional niches in words_of_the_world_video_sheet.xlsx
+# Supports classic nature niches and all 11 niches from words_of_the_world_video_sheet.xlsx
 NICHE_AUDIO_MAP = {
     "rain": "gentle rain falling window ambient asmr",
     "ocean": "calm ocean waves beach water ambient",
@@ -164,11 +170,7 @@ def ensure_assets():
 
 
 def get_font_for_text(line_text):
-    """
-    Selects the right serif font per line so Latin, Japanese Kanji/Kana, and Hindi Devanagari
-    all render cleanly without missing glyph boxes.
-    """
-    # 1. Check for Japanese (Hiragana, Katakana, CJK Kanji)
+    """Selects the right serif font per line for Latin, Japanese Kanji/Kana, or Hindi Devanagari."""
     if re.search(r'[\u3040-\u30ff\u4e00-\u9fff]', line_text):
         cjk_candidates = [
             "/usr/share/fonts/opentype/noto/NotoSerifCJK-Regular.ttc",
@@ -179,7 +181,6 @@ def get_font_for_text(line_text):
             if os.path.exists(p):
                 return p
 
-    # 2. Check for Hindi Devanagari
     if re.search(r'[\u0900-\u097f]', line_text):
         if os.path.exists("MergedHindiSerif.ttf"):
             return "MergedHindiSerif.ttf"
@@ -187,7 +188,6 @@ def get_font_for_text(line_text):
         if os.path.exists(dev_path):
             return dev_path
 
-    # 3. Default Classic Poetic Book Serif for Latin / European accents
     latin_candidates = [
         "PoetrySerif.ttf",
         "/usr/share/fonts/truetype/ebgaramond/EBGaramond12-Regular.ttf",
@@ -222,10 +222,7 @@ def detect_target_language(title_str, overlay_str, caption_str):
 
 
 def extract_phonetic_hint(title_str, caption_str):
-    """
-    Extracts parenthesized reading from Caption if present, e.g. '木漏れ日 (komorebi) | Japanese' -> 'komorebi',
-    used only if Japanese Kanji phonemizer needs a phonetic fallback.
-    """
+    """Extracts parenthesized reading from Caption if present, e.g. '木漏れ日 (komorebi) | Japanese' -> 'komorebi'."""
     first_line = caption_str.splitlines()[0] if caption_str else ""
     m = re.search(r'\(([^)]+)\)', first_line)
     if m:
@@ -238,18 +235,17 @@ def prepare_poetic_lines(title_text, body_text):
     Formats:
       1) Title at the very top in Yellow (#FFD700) and larger font (fontsize=58)
       2) Overlay_Text stanzas below in soft white (#f5f5f3) and fontsize=45
-    Returns a list of dicts: {fname, rel_y, fontsize, fontcolor, fontfile} and total_block_height.
     """
     items = []
     current_y = 0
     file_idx = 0
 
-    # --- 1. TITLE BLOCK (First on video, Yellow, Bigger than overlay_text) ---
+    # --- 1. TITLE BLOCK (Yellow, Bigger than overlay_text) ---
     clean_title = (title_text or "").strip()
     if clean_title:
         title_wrapped = textwrap.wrap(clean_title, width=22) or [clean_title]
         title_line_height = 72
-        title_bottom_gap = 55  # Extra breathing room between yellow Title and body text
+        title_bottom_gap = 55
 
         for t_line in title_wrapped:
             fname = f"quote_line_{file_idx}.txt"
@@ -267,7 +263,7 @@ def prepare_poetic_lines(title_text, body_text):
 
         current_y += title_bottom_gap
 
-    # --- 2. OVERLAY_TEXT BLOCK (Poetic stanzas below Title) ---
+    # --- 2. OVERLAY_TEXT BLOCK ---
     cleaned = (body_text or "").replace("\r\n", "\n").replace("\u2028", "\n").replace("\u2029", "\n").strip()
     if not cleaned:
         cleaned = "Peace comes from within.\nDo not seek it without."
@@ -294,8 +290,8 @@ def prepare_poetic_lines(title_text, body_text):
                 items.append({
                     "fname": fname,
                     "rel_y": current_y,
-                    "fontsize": 45,           # Standard poetic body size
-                    "fontcolor": "#f5f5f3",   # Soft off-white
+                    "fontsize": 45,
+                    "fontcolor": "#f5f5f3",
                     "fontfile": get_font_for_text(w_line)
                 })
                 current_y += line_height
@@ -330,7 +326,6 @@ def synthesize_kokoro_segment(kokoro, text_seg, voice_vec, lang_code, speed=0.83
 
     if fallback_text and fallback_text != text_seg:
         try:
-            # Pronounce using phonetic reading with native vowel rules (e.g. Italian/Spanish/Japanese)
             phonetic_lang = "it" if lang_code == "ja" else lang_code
             samples, sr = kokoro.create(fallback_text, voice=voice_vec, speed=speed, lang=phonetic_lang)
             if samples is not None and len(samples) > 400:
@@ -344,7 +339,7 @@ def synthesize_kokoro_segment(kokoro, text_seg, voice_vec, lang_code, speed=0.83
 
 def generate_kokoro_asmr_voiceover(title_word, text, caption_text):
     """
-    Keeps the exact same 55% af_nicole + 45% af_heart English ASMR voice quality throughout,
+    Keeps the 55% af_nicole + 45% af_heart English ASMR voice quality throughout,
     while switching Kokoro-82M to the native language phonemizer (fr-fr, es, it, pt-br, hi, ja)
     whenever pronouncing the foreign Title word.
     """
@@ -365,7 +360,6 @@ def generate_kokoro_asmr_voiceover(title_word, text, caption_text):
             v_heart = kokoro.get_voice_style("af_heart")
             english_asmr_vec = (v_nicole * 0.55) + (v_heart * 0.45)
 
-            # Keep 80% of the exact English ASMR voice + 20% native voice vector for authentic native articulation
             if native_lang_code != "en-us":
                 v_native = kokoro.get_voice_style(native_voice_name)
                 native_asmr_vec = (english_asmr_vec * 0.80) + (v_native * 0.20)
@@ -381,13 +375,11 @@ def generate_kokoro_asmr_voiceover(title_word, text, caption_text):
         clean_title = (title_word or "").strip()
 
         for i, phrase in enumerate(phrases):
-            # Check if this sentence introduces the foreign Title word (e.g. "There's a word in French… Dépaysement.")
             if clean_title and clean_title in phrase and native_lang_code != "en-us":
                 parts = phrase.split(clean_title, 1)
                 prefix_en = re.sub(r'[….:\-–—]+\s*$', '', parts[0]).strip()
                 suffix_en = re.sub(r'^[.!?…,\s]+', '', parts[1]).strip()
 
-                # 1. Speak the English lead-in ("There's a word in French") in English ASMR
                 if prefix_en:
                     s_pre, sample_rate = synthesize_kokoro_segment(
                         kokoro, prefix_en + ".", english_asmr_vec, "en-us", speed=0.83
@@ -395,13 +387,11 @@ def generate_kokoro_asmr_voiceover(title_word, text, caption_text):
                     audio_segments.append(s_pre)
                     audio_segments.append(np.zeros(int(sample_rate * 0.38), dtype=np.float32))
 
-                # 2. Speak the Title word in its NATIVE language with the same ASMR voice quality
                 s_word, sample_rate = synthesize_kokoro_segment(
                     kokoro, clean_title, native_asmr_vec, native_lang_code, speed=0.80, fallback_text=phonetic_hint
                 )
                 audio_segments.append(s_word)
 
-                # 3. Speak any trailing words in the sentence in English
                 if suffix_en:
                     audio_segments.append(np.zeros(int(sample_rate * 0.35), dtype=np.float32))
                     s_suf, sample_rate = synthesize_kokoro_segment(
@@ -409,13 +399,11 @@ def generate_kokoro_asmr_voiceover(title_word, text, caption_text):
                     )
                     audio_segments.append(s_suf)
             else:
-                # Standard English sentence (or pure native sentence)
                 s_seg, sample_rate = synthesize_kokoro_segment(
                     kokoro, phrase, english_asmr_vec, "en-us", speed=0.83
                 )
                 audio_segments.append(s_seg)
 
-            # 1.10-second meditative silence gap between sentences
             if i < len(phrases) - 1:
                 pause_samples = np.zeros(int(sample_rate * 1.10), dtype=np.float32)
                 audio_segments.append(pause_samples)
@@ -441,7 +429,6 @@ def generate_kokoro_asmr_voiceover(title_word, text, caption_text):
 
     if raw_gen:
         try:
-            # 12ms Binaural Ribbon-Mic Mastering Chain
             subprocess.run([
                 "ffmpeg", "-y", "-i", "voice_raw.wav",
                 "-af", (
@@ -731,82 +718,6 @@ def render_ffmpeg(piano_file, vo_duration, total_duration):
 
 
 def upload_video_with_fallback():
-    try:
-        res = cloudinary.uploader.upload_large(
-            "final_output.mp4",
-            resource_type="video",
-            folder="auto_relaxing_videos"
-        )
-        video_url = res.get("secure_url")
-        if video_url:
-            print(f"Uploaded to Cloudinary successfully: {video_url}")
-            return video_url
-    except Exception as e:
-        print(f"Cloudinary upload skipped ({e}). Uploading to backup free MP4 host...")
-
-    try:
-        with open("final_output.mp4", "rb") as f:
-            r = requests.post(
-                "https://litterbox.catbox.moe/resources/internals/api.php",
-                data={"reqtype": "fileupload", "time": "72h"},
-                files={"fileToUpload": ("final_output.mp4", f, "video/mp4")},
-                timeout=60
-            )
-        if r.status_code == 200 and r.text.strip().startswith("http"):
-            return r.text.strip()
-    except Exception as e2:
-        print(f"Litterbox backup failed: {e2}")
-
-    with open("final_output.mp4", "rb") as f:
-        r = requests.post(
-            "https://catbox.moe/user/api.php",
-            data={"reqtype": "fileupload"},
-            files={"fileToUpload": ("final_output.mp4", f, "video/mp4")},
-            timeout=60
-        )
-    return r.text.strip()
-
-
-def main():
-    ensure_assets()
-
-    # Step 1: Generate Voiceover FIRST (with native Title pronunciation) so we know its exact length
-    generate_kokoro_asmr_voiceover(title, overlay_text, caption)
-    vo_duration = get_duration("voice.mp3")
-
-    # Step 2: Calculate Dynamic Total Video Duration = 2.0s intro + full voiceover + 4.0s extra tail
-    total_duration = max(12.0, round(VO_START_DELAY + vo_duration + EXTRA_TAIL_SECONDS, 2))
-    print(f"Voiceover length: {vo_duration:.2f}s -> Dynamic Total Video Duration set to: {total_duration:.2f}s (includes +4.0s tail)")
-
-    # Step 3: Download/generate visual & audio tracks matched to total_duration
-    matched_niche = detect_niche_keyword()
-    download_visual_background(total_duration)
-    fetch_asmr_audio(matched_niche, total_duration)
-    piano_file = fetch_relaxing_piano(total_duration)
-
-    # Step 4: Render final video with Yellow Title header, left-aligned poetic layout, and dynamic duration
-    render_ffmpeg(piano_file, vo_duration, total_duration)
-    video_url = upload_video_with_fallback()
-
-    if MAKE_WEBHOOK_URL and MAKE_WEBHOOK_URL.startswith("http"):
-        resp = requests.post(
-            MAKE_WEBHOOK_URL,
-            json={
-                "row_id": row_id,
-                "title": title,
-                "video_url": video_url,
-                "caption": caption
-            },
-            timeout=20
-        )
-        print(f"Sent webhook to Make.com successfully! Status: {resp.status_code}")
-    else:
-        print("Warning: MAKE_WEBHOOK_URL is not set or invalid; skipped Make webhook.")
-
-
-if __name__ == "__main__":
-    main()
-def upload_video_with_fallback():
     # 1. Primary: Standard Cloudinary Video Upload
     try:
         res = cloudinary.uploader.upload(
@@ -838,7 +749,7 @@ def upload_video_with_fallback():
     except Exception as e2:
         print(f"Litterbox backup failed: {e2}")
 
-    # 3. Backup 2: tmpfiles.org (Direct download URL conversion for Make.com)
+    # 3. Backup 2: tmpfiles.org (Direct download URL for Make.com)
     try:
         with open("final_output.mp4", "rb") as f:
             r = requests.post(
@@ -896,11 +807,6 @@ def main():
     video_url = upload_video_with_fallback()
     print(f"Final Hosted Video URL: {video_url}")
 
-    # Step 5: Send payload to Make.com Webhook
-    if not MAKE_WEBHOOK_URL or not MAKE_WEBHOOK_URL.startswith("http"):
-        raise RuntimeError(
-            f"MAKE_WEBHOOK_URL is missing or invalid in GitHub Secrets! Current value starts with: '{MAKE_WEBHOOK_URL[:12]}'"
-        )
     if not video_url or not video_url.startswith("http"):
         raise RuntimeError("Video upload failed across all hosts; no valid video_url to send to Make.com!")
 
@@ -910,14 +816,20 @@ def main():
         "video_url": video_url,
         "caption": caption
     }
-    resp = requests.post(
-        MAKE_WEBHOOK_URL,
-        json=webhook_payload,
-        headers={"Content-Type": "application/json"},
-        timeout=30
-    )
-    print(f"Sent webhook to Make.com! Status: {resp.status_code} | Response: {resp.text}")
-    resp.raise_for_status()
+
+    # Always send to your primary US2 Make.com Webhook URL
+    target_webhooks = [PRIMARY_MAKE_WEBHOOK]
+    if MAKE_WEBHOOK_URL.startswith("http") and MAKE_WEBHOOK_URL != PRIMARY_MAKE_WEBHOOK:
+        target_webhooks.append(MAKE_WEBHOOK_URL)
+
+    for wh_url in target_webhooks:
+        resp = requests.post(
+            wh_url,
+            json=webhook_payload,
+            headers={"Content-Type": "application/json"},
+            timeout=30
+        )
+        print(f"Sent webhook to {wh_url} -> Status: {resp.status_code} | Response: {resp.text}")
 
 
 if __name__ == "__main__":
