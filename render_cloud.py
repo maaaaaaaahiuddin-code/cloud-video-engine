@@ -423,10 +423,7 @@ def get_font_for_text(line_text):
 
 
 def build_editorial_subtitle(title_str, overlay_str, caption_str):
-    """
-    UPGRADE 2: Builds the editorial '[ Language  •  pronunciation ]' sub-header
-    shown directly below the Yellow Title.
-    """
+    """Builds the editorial '[ Language  •  pronunciation ]' sub-header shown below the Yellow Title."""
     lang_label = ""
     first_line = caption_str.splitlines()[0] if caption_str else ""
     if "|" in first_line:
@@ -454,16 +451,18 @@ def build_editorial_subtitle(title_str, overlay_str, caption_str):
 
 def prepare_poetic_lines(title_text, body_text, caption_text, sentence_start_times=None):
     """
-    UPGRADES 1, 2 & 4 + 0.6s Fast-Hook Layout:
-      1) Yellow Title (#FFD700, fontsize=58) locked at 100% opacity on Frame 0 (t=0.00s) for IG/FB Grid Cover
-      2) Editorial Sub-Header '[ Language • Pronunciation ]' (#E6C687, fontsize=32) locked at 100% opacity on Frame 0 (t=0.00s)
-      3) Overlay_Text stanzas (#f5f5f3, fontsize=45) fade in line-by-line synced to each spoken sentence (starting at t=0.60s)
+    Combines all layout & retention upgrades:
+      - Frame-0 Instant Header (Yellow Title #FFD700 + Editorial Subtitle #E6C687)
+      - 2px Golden Reading-Progress Thread position (prog_rel_y)
+      - Active 'Karaoke / Kindle' Stanza Spotlight (100% active -> 68% after next sentence starts)
+      - Highlighted Closing Takeaway / Share Stanza in Warm Gold (#FFE599) with +12px top separation
     """
     items = []
     current_y = 0
     file_idx = 0
+    prog_rel_y = 60
 
-    # --- 1. YELLOW TITLE BLOCK (UPGRADE 4: 100% visible at t=0.00s for IG/FB Thumbnail Cover) ---
+    # --- 1. YELLOW TITLE BLOCK (100% visible at t=0.00s for IG/FB Thumbnail Cover) ---
     clean_title = (title_text or "").strip()
     if clean_title:
         title_wrapped = textwrap.wrap(clean_title, width=22) or [clean_title]
@@ -480,12 +479,13 @@ def prepare_poetic_lines(title_text, body_text, caption_text, sentence_start_tim
                 "fontcolor": "#FFD700",
                 "fontfile": get_font_for_text(t_line),
                 "start_t": 0.00,
+                "dim_t": None,
                 "instant_header": True
             })
             current_y += title_line_height
             file_idx += 1
 
-        # --- 2. EDITORIAL SUB-HEADER '[ Language  •  Pronunciation ]' (UPGRADE 4: 100% visible at t=0.00s) ---
+        # --- 2. EDITORIAL SUB-HEADER '[ Language  •  Pronunciation ]' ---
         subtitle_str = build_editorial_subtitle(title_text, body_text, caption_text)
         if subtitle_str:
             fname = f"quote_line_{file_idx}.txt"
@@ -498,14 +498,17 @@ def prepare_poetic_lines(title_text, body_text, caption_text, sentence_start_tim
                 "fontcolor": "#E6C687",   # Soft Champagne Gold
                 "fontfile": get_font_for_text(subtitle_str),
                 "start_t": 0.00,
+                "dim_t": None,
                 "instant_header": True
             })
-            current_y += 44 + 42          # Subtitle height (44px) + gap before body text (42px)
+            prog_rel_y = current_y + 54   # 2px Golden Progress Thread sits right under subtitle
+            current_y += 44 + 46          # Subtitle height (44px) + gap before body text (46px)
             file_idx += 1
         else:
+            prog_rel_y = current_y + 20
             current_y += 50
 
-    # --- 3. OVERLAY_TEXT BLOCK (Each stanza synced to its voiceover sentence timestamp) ---
+    # --- 3. OVERLAY_TEXT BLOCK (Active Stanza Spotlight + Warm Gold Final Takeaway Stanza) ---
     cleaned = (body_text or "").replace("\r\n", "\n").replace("\u2028", "\n").replace("\u2029", "\n").strip()
     if not cleaned:
         cleaned = "Peace comes from within.\nDo not seek it without."
@@ -518,14 +521,27 @@ def prepare_poetic_lines(title_text, body_text, caption_text, sentence_start_tim
 
     line_height = 58
     stanza_gap = 34
+    num_stanzas = len(stanzas)
 
     for s_idx, stanza in enumerate(stanzas):
+        is_final_stanza = (s_idx == num_stanzas - 1 and num_stanzas > 1)
+        if is_final_stanza:
+            current_y += 12  # Extra 12px separation before Warm Gold closing takeaway line
+
         if sentence_start_times and s_idx < len(sentence_start_times):
             stanza_base_t = sentence_start_times[s_idx]
         elif sentence_start_times:
             stanza_base_t = sentence_start_times[-1] + ((s_idx - len(sentence_start_times) + 1) * 3.0)
         else:
             stanza_base_t = VO_START_DELAY + (s_idx * 3.2)
+
+        # Spotlight dimming timestamp: dim this stanza to 68% when the next stanza starts speaking
+        if not is_final_stanza and sentence_start_times and (s_idx + 1) < len(sentence_start_times):
+            next_stanza_t = sentence_start_times[s_idx + 1]
+        else:
+            next_stanza_t = None
+
+        stanza_color = "#FFE599" if is_final_stanza else "#f5f5f3"
 
         line_in_stanza = 0
         for raw_line in stanza.split("\n"):
@@ -541,20 +557,21 @@ def prepare_poetic_lines(title_text, body_text, caption_text, sentence_start_tim
                     "fname": fname,
                     "rel_y": current_y,
                     "fontsize": 45,
-                    "fontcolor": "#f5f5f3",
+                    "fontcolor": stanza_color,
                     "fontfile": get_font_for_text(w_line),
                     "start_t": round(stanza_base_t + (line_in_stanza * 0.28), 2),
+                    "dim_t": next_stanza_t,
                     "instant_header": False
                 })
                 current_y += line_height
                 file_idx += 1
                 line_in_stanza += 1
 
-        if s_idx < len(stanzas) - 1:
+        if s_idx < num_stanzas - 1:
             current_y += stanza_gap
 
     total_height = max(current_y - line_height, 60)
-    return items, total_height
+    return items, total_height, prog_rel_y
 
 
 def get_duration(filename):
@@ -593,10 +610,6 @@ def generate_kokoro_asmr_voiceover(title_word, text, caption_text):
     """
     Generates the 55% af_nicole + 45% af_heart voiceover AND returns the exact
     video timestamp (in seconds) where each sentence begins speaking.
-    Includes UPGRADE 5:
-      - 1.45s pre-closing-sentence meditative pause (vs 1.10s between body sentences)
-      - 0.79x slower delivery on the final closing sentence (vs 0.83x on body sentences)
-      - 0.80s silence tail pad + warm studio room reverb (aecho) in the 12ms Ribbon-Mic chain
     """
     spoken_text = prepare_spoken_script(title_word, text, caption_text)
     chunks = re.split(r'(?<=[.!?])\s+|\n+', spoken_text.replace("\r", ""))
@@ -639,14 +652,12 @@ def generate_kokoro_asmr_voiceover(title_word, text, caption_text):
             cumulative_samples += len(samples)
 
             if i < total_phrases - 1:
-                # UPGRADE 5: Use a 1.45s breath pause right before the final closing sentence
                 next_is_final = (i + 1 == total_phrases - 1)
                 pause_sec = 1.45 if next_is_final else 1.10
                 pause_samples = np.zeros(int(sample_rate * pause_sec), dtype=np.float32)
                 audio_segments.append(pause_samples)
                 cumulative_samples += len(pause_samples)
 
-        # UPGRADE 5: Append 0.80s silence tail so the studio room reverb decays naturally without clipping
         reverb_tail_pad = np.zeros(int(sample_rate * 0.80), dtype=np.float32)
         audio_segments.append(reverb_tail_pad)
 
@@ -671,7 +682,6 @@ def generate_kokoro_asmr_voiceover(title_word, text, caption_text):
 
     if raw_gen:
         try:
-            # UPGRADE 5: Added subtle warm acoustic room echo (aecho) inside the 12ms Binaural Ribbon-Mic chain
             subprocess.run([
                 "ffmpeg", "-y", "-i", "voice_raw.wav",
                 "-af", (
@@ -894,7 +904,7 @@ def render_ffmpeg(piano_file, vo_duration, total_duration, sentence_start_times)
     max_offset = max(0.0, piano_dur - total_duration - 2.0)
     piano_start = random.uniform(0.0, max_offset) if max_offset > 4.0 else 0.0
 
-    line_items, total_height = prepare_poetic_lines(title, overlay_text, caption, sentence_start_times)
+    line_items, total_height, prog_rel_y = prepare_poetic_lines(title, overlay_text, caption, sentence_start_times)
     fade_start = max(total_duration - FADE_DURATION, total_duration - 2.0)
     text_fade_start = max(fade_start - 0.3, 4.0)
     text_fade_end = text_fade_start + 1.3
@@ -903,22 +913,42 @@ def render_ffmpeg(piano_file, vo_duration, total_duration, sentence_start_times)
     bar_y = max(base_y - 6, 120)
     bar_h = total_height + 56
 
+    # Floating Editorial Card coordinates (x=28, w=1024, 36px top/bottom padding)
+    card_y = max(base_y - 36, 80)
+    card_h = total_height + 48 + 72
+    prog_y = base_y + prog_rel_y
+
     drawtext_filters = []
     for item in line_items:
         start_t = item["start_t"]
+        dim_t = item.get("dim_t")
         if item.get("instant_header", False):
-            # UPGRADE 4: 100% opacity at Frame 0 (t=0.00s) for Instagram & Facebook Grid Thumbnail
+            # 100% opacity at Frame 0 (t=0.00s) for Instagram & Facebook Grid Thumbnail
             line_alpha = (
                 f"if(lt(t,{text_fade_start:.2f}),1,"
-                f"if(lt(t,{text_fade_end:.2f}),({text_fade_end:.2f}-t)/1.3,0))"
+                f"if(lt(t,{text_fade_end:.2f}),({text_fade_end:.2f}-t)/1.30,0))"
+            )
+        elif dim_t is not None:
+            # Active 'Karaoke / Kindle' Stanza Spotlight: 100% while spoken -> dims to 68% when next stanza begins
+            fade_in_end = start_t + 0.70
+            dim_start = max(dim_t, fade_in_end + 0.15)
+            dim_end = dim_start + 0.50
+            line_alpha = (
+                f"if(lt(t,{start_t:.2f}),0,"
+                f"if(lt(t,{fade_in_end:.2f}),(t-{start_t:.2f})/0.70,"
+                f"if(lt(t,{dim_start:.2f}),1,"
+                f"if(lt(t,{dim_end:.2f}),1-0.32*((t-{dim_start:.2f})/0.50),"
+                f"if(lt(t,{text_fade_start:.2f}),0.68,"
+                f"if(lt(t,{text_fade_end:.2f}),0.68*(({text_fade_end:.2f}-t)/1.30),0))))))"
             )
         else:
+            # Final Warm Gold Takeaway Stanza stays at 100% spotlight until final fade-out
             fade_in_end = start_t + 0.70
             line_alpha = (
                 f"if(lt(t,{start_t:.2f}),0,"
                 f"if(lt(t,{fade_in_end:.2f}),(t-{start_t:.2f})/0.70,"
                 f"if(lt(t,{text_fade_start:.2f}),1,"
-                f"if(lt(t,{text_fade_end:.2f}),({text_fade_end:.2f}-t)/1.3,0))))"
+                f"if(lt(t,{text_fade_end:.2f}),({text_fade_end:.2f}-t)/1.30,0))))"
             )
         y_pos = base_y + item["rel_y"]
         drawtext_filters.append(
@@ -938,7 +968,22 @@ def render_ffmpeg(piano_file, vo_duration, total_duration, sentence_start_times)
     vo_end = VO_START_DELAY + vo_duration
     adelay_ms = int(VO_START_DELAY * 1000)
 
-    # UPGRADE 3: Smooth 0.45s Pre-Voice Ducking Ramp & 1.20s Post-Voice Swell Ramp
+    # 2px Animated Golden Reading-Progress Thread (32 smooth 29px steps = 928px total width)
+    progress_boxes = [
+        f"drawbox=x=76:y={prog_y}:w=928:h=2:color=#FFD700@0.20:t=fill:enable='between(t,0.00,{text_fade_end:.2f})'"
+    ]
+    num_steps = 32
+    step_w = 29
+    active_vo_span = max(vo_duration - 0.80, 4.0)
+    for step in range(num_steps):
+        step_x = 76 + (step * step_w)
+        step_t = round(vo_start + (step / float(num_steps)) * active_vo_span, 2)
+        progress_boxes.append(
+            f"drawbox=x={step_x}:y={prog_y}:w={step_w}:h=2:color=#FFD700@0.85:t=fill:enable='between(t,{step_t:.2f},{text_fade_end:.2f})'"
+        )
+    progress_boxes_str = ",".join(progress_boxes)
+
+    # Smooth 0.45s Pre-Voice Ducking Ramp & 1.20s Post-Voice Swell Ramp
     duck_ramp = 0.45
     swell_ramp = 1.20
     duck_start = max(0.0, round(vo_start - duck_ramp, 2))
@@ -957,17 +1002,19 @@ def render_ffmpeg(piano_file, vo_duration, total_duration, sentence_start_times)
         f"if(lt(t,{swell_end:.2f}),0.20+0.22*((t-{vo_end:.2f})/{swell_ramp:.2f}),0.42))))"
     )
 
-    # UPGRADE 4: Opens directly at Frame 0 (t=0.00s) with Yellow Title, Subtitle, and Gold Bar visible
+    # Brighter Nature Visuals (22% global dim) + Floating Editorial Card (42% card dim) + Gold Progress Thread
     v_filter = (
         f"[0:v]setpts={pts_multiplier:.4f}*PTS,"
         f"scale=1080:1920:force_original_aspect_ratio=increase,"
         f"crop=1080:1920,setsar=1,fps=30,"
-        f"eq=brightness=-0.05:contrast=1.08:saturation=0.82,"
+        f"eq=brightness=-0.03:contrast=1.08:saturation=0.86,"
         f"colorbalance=rs=-0.02:bs=0.03:rh=0.03:gh=0.01:bh=-0.02,"
         f"noise=alls=4:allf=t+u,"
         f"vignette=PI/4,"
-        f"drawbox=x=0:y=0:w=iw:h=ih:color=black@0.46:t=fill,"
-        f"drawbox=x=50:y={bar_y}:w=3:h={bar_h}:color=#FFD700@0.65:t=fill:enable='between(t,0.00,{text_fade_end:.2f})',"
+        f"drawbox=x=0:y=0:w=iw:h=ih:color=black@0.22:t=fill,"
+        f"drawbox=x=28:y={card_y}:w=1024:h={card_h}:color=black@0.42:t=fill:enable='between(t,0.00,{text_fade_end:.2f})',"
+        f"drawbox=x=50:y={bar_y}:w=3:h={bar_h}:color=#FFD700@0.70:t=fill:enable='between(t,0.00,{text_fade_end:.2f})',"
+        f"{progress_boxes_str},"
         f"{drawtext_filters_str},"
         f"fade=t=out:st={fade_start:.2f}:d={FADE_DURATION}[v]"
     )
@@ -1149,7 +1196,7 @@ def upload_video_with_fallback():
 def main():
     ensure_assets()
 
-    # Step 1: Generate Voiceover FIRST (with Upgrade 5 closing pause, cadence & reverb tail)
+    # Step 1: Generate Voiceover FIRST and capture exact start timestamp of each sentence
     sentence_start_times = generate_kokoro_asmr_voiceover(title, overlay_text, caption)
     vo_duration = get_duration("voice.mp3")
 
@@ -1163,7 +1210,7 @@ def main():
     fetch_asmr_audio(matched_niche, total_duration)
     piano_file = fetch_relaxing_piano(total_duration)
 
-    # Step 4: Render final video with 0.6s Fast Hook + All 5 Upgrades (1, 2, 3, 4 & 5)
+    # Step 4: Render final video with all 9 upgrades combined
     render_ffmpeg(piano_file, vo_duration, total_duration, sentence_start_times)
     video_url = upload_video_with_fallback()
     print(f"Final Hosted Video URL: {video_url}")
