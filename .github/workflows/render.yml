@@ -7,6 +7,8 @@ on:
 jobs:
   build_video:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -21,6 +23,8 @@ jobs:
 
       - name: Run Video Render & Upload
         env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
           PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
           FREESOUND_API_KEY: ${{ secrets.FREESOUND_API_KEY }}
           CLOUDINARY_URL: ${{ secrets.CLOUDINARY_URL }}
