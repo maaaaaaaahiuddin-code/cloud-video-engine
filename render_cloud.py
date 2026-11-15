@@ -806,3 +806,119 @@ def main():
 
 if __name__ == "__main__":
     main()
+def upload_video_with_fallback():
+    # 1. Primary: Standard Cloudinary Video Upload
+    try:
+        res = cloudinary.uploader.upload(
+            "final_output.mp4",
+            resource_type="video",
+            folder="auto_relaxing_videos",
+            timeout=120
+        )
+        video_url = res.get("secure_url")
+        if video_url and video_url.startswith("http"):
+            print(f"Uploaded to Cloudinary successfully: {video_url}")
+            return video_url
+    except Exception as e:
+        print(f"Cloudinary upload skipped ({e}). Uploading to backup free MP4 host...")
+
+    # 2. Backup 1: Litterbox (72h direct MP4 link)
+    try:
+        with open("final_output.mp4", "rb") as f:
+            r = requests.post(
+                "https://litterbox.catbox.moe/resources/internals/api.php",
+                data={"reqtype": "fileupload", "time": "72h"},
+                files={"fileToUpload": ("final_output.mp4", f, "video/mp4")},
+                timeout=60
+            )
+        if r.status_code == 200 and r.text.strip().startswith("http"):
+            url = r.text.strip()
+            print(f"Uploaded to Litterbox successfully: {url}")
+            return url
+    except Exception as e2:
+        print(f"Litterbox backup failed: {e2}")
+
+    # 3. Backup 2: tmpfiles.org (Direct download URL conversion for Make.com)
+    try:
+        with open("final_output.mp4", "rb") as f:
+            r = requests.post(
+                "https://tmpfiles.org/api/v1/upload",
+                files={"file": ("final_output.mp4", f, "video/mp4")},
+                timeout=60
+            )
+        if r.status_code == 200:
+            raw_url = r.json().get("data", {}).get("url", "")
+            if raw_url.startswith("http"):
+                direct_url = raw_url.replace("tmpfiles.org/", "tmpfiles.org/dl/", 1)
+                print(f"Uploaded to tmpfiles.org successfully: {direct_url}")
+                return direct_url
+    except Exception as e3:
+        print(f"tmpfiles backup failed: {e3}")
+
+    # 4. Backup 3: Catbox.moe
+    try:
+        with open("final_output.mp4", "rb") as f:
+            r = requests.post(
+                "https://catbox.moe/user/api.php",
+                data={"reqtype": "fileupload"},
+                files={"fileToUpload": ("final_output.mp4", f, "video/mp4")},
+                timeout=60
+            )
+        if r.status_code == 200 and r.text.strip().startswith("http"):
+            url = r.text.strip()
+            print(f"Uploaded to Catbox successfully: {url}")
+            return url
+    except Exception as e4:
+        print(f"Catbox backup failed: {e4}")
+
+    return ""
+
+
+def main():
+    ensure_assets()
+
+    # Step 1: Generate Voiceover FIRST (with native Title pronunciation) so we know its exact length
+    generate_kokoro_asmr_voiceover(title, overlay_text, caption)
+    vo_duration = get_duration("voice.mp3")
+
+    # Step 2: Calculate Dynamic Total Video Duration = 2.0s intro + full voiceover + 4.0s extra tail
+    total_duration = max(12.0, round(VO_START_DELAY + vo_duration + EXTRA_TAIL_SECONDS, 2))
+    print(f"Voiceover length: {vo_duration:.2f}s -> Dynamic Total Video Duration set to: {total_duration:.2f}s (includes +4.0s tail)")
+
+    # Step 3: Download/generate visual & audio tracks matched to total_duration
+    matched_niche = detect_niche_keyword()
+    download_visual_background(total_duration)
+    fetch_asmr_audio(matched_niche, total_duration)
+    piano_file = fetch_relaxing_piano(total_duration)
+
+    # Step 4: Render final video with Yellow Title header, left-aligned poetic layout, and dynamic duration
+    render_ffmpeg(piano_file, vo_duration, total_duration)
+    video_url = upload_video_with_fallback()
+    print(f"Final Hosted Video URL: {video_url}")
+
+    # Step 5: Send payload to Make.com Webhook
+    if not MAKE_WEBHOOK_URL or not MAKE_WEBHOOK_URL.startswith("http"):
+        raise RuntimeError(
+            f"MAKE_WEBHOOK_URL is missing or invalid in GitHub Secrets! Current value starts with: '{MAKE_WEBHOOK_URL[:12]}'"
+        )
+    if not video_url or not video_url.startswith("http"):
+        raise RuntimeError("Video upload failed across all hosts; no valid video_url to send to Make.com!")
+
+    webhook_payload = {
+        "row_id": row_id,
+        "title": title,
+        "video_url": video_url,
+        "caption": caption
+    }
+    resp = requests.post(
+        MAKE_WEBHOOK_URL,
+        json=webhook_payload,
+        headers={"Content-Type": "application/json"},
+        timeout=30
+    )
+    print(f"Sent webhook to Make.com! Status: {resp.status_code} | Response: {resp.text}")
+    resp.raise_for_status()
+
+
+if __name__ == "__main__":
+    main()
