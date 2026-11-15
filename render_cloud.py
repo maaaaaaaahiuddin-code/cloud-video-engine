@@ -79,6 +79,13 @@ VO_START_DELAY = 0.6        # Fast-Hook: Voiceover starts at 0.6 seconds (600ms)
 EXTRA_TAIL_SECONDS = 4.0    # Extra 4.0 seconds of calm ASMR + Piano after voiceover finishes
 FADE_DURATION = 1.5         # Smooth 1.5s fade-out at the very end
 
+# Universal tag filter to block non-aesthetic CGI, cartoon, studio, or commercial clips on Pixabay
+BANNED_VISUAL_TAGS = (
+    "animation", "cartoon", "3d", "cgi", "render", "green screen",
+    "chroma", "isolated", "white background", "business", "office",
+    "commercial", "marketing", "illustration", "comic"
+)
+
 NICHE_AUDIO_MAP = {
     "rain": "gentle rain falling window ambient asmr",
     "ocean": "calm ocean waves beach water ambient",
@@ -738,22 +745,28 @@ def download_visual_background(target_duration):
                 urllib.parse.quote(fallback_keyword),
                 "calm+nature+rain"
             ]
-            hits = []
+            chosen_hit = None
             for q in queries:
                 if not q:
                     continue
                 url = (
                     f"https://pixabay.com/api/videos/?key={PIXABAY_API_KEY}"
-                    f"&q={q}&orientation=vertical&per_page=15&safesearch=true"
+                    f"&q={q}&orientation=vertical&video_type=film&per_page=20&safesearch=true"
                 )
                 r = requests.get(url, timeout=20)
-                hits = r.json().get("hits", []) if r.status_code == 200 else []
-                if hits:
+                raw_hits = r.json().get("hits", []) if r.status_code == 200 else []
+
+                # Filter out non-aesthetic tags in BANNED_VISUAL_TAGS
+                clean_hits = [
+                    h for h in raw_hits
+                    if not any(bad in h.get("tags", "").lower() for bad in BANNED_VISUAL_TAGS)
+                ]
+                if clean_hits:
+                    chosen_hit = random.choice(clean_hits)
                     break
 
-            if hits:
-                chosen = random.choice(hits)
-                vids = chosen.get("videos", {})
+            if chosen_hit:
+                vids = chosen_hit.get("videos", {})
                 v_url = (
                     vids.get("large", {}).get("url")
                     or vids.get("medium", {}).get("url")
@@ -998,7 +1011,7 @@ def render_ffmpeg(piano_file, vo_duration, total_duration, sentence_start_times)
         f"if(lt(t,{swell_end:.2f}),0.20+0.22*((t-{vo_end:.2f})/{swell_ramp:.2f}),0.42))))"
     )
 
-    # Restored original clean 46% full-screen dark matte (black@0.46) with no floating card
+    # Restored clean 46% full-screen dark matte (black@0.46) with no floating card
     v_filter = (
         f"[0:v]setpts={pts_multiplier:.4f}*PTS,"
         f"scale=1080:1920:force_original_aspect_ratio=increase,"
