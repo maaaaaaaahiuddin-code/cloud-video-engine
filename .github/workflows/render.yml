@@ -11,7 +11,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install FFmpeg, Multilingual Serif Fonts, Kokoro-82M ONNX, and Dependencies
+      - name: Install FFmpeg, Multilingual Fonts, Kokoro-82M ONNX, and Dependencies
         run: |
           sudo apt-get update && sudo apt-get install -y ffmpeg fonts-dejavu-core fonts-ebgaramond fonts-noto-core fonts-noto-cjk espeak-ng libsndfile1 wget curl
           pip install requests cloudinary kokoro-onnx soundfile numpy fonttools "misaki[ja]" edge-tts gTTS
