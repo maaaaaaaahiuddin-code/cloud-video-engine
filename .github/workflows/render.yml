@@ -1,0 +1,29 @@
+name: Cloud Video Renderer
+
+on:
+  repository_dispatch:
+    types: [render_video]
+
+jobs:
+  build_video:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install FFmpeg, Multilingual Serif Fonts, Kokoro-82M ONNX, and Dependencies
+        run: |
+          sudo apt-get update && sudo apt-get install -y ffmpeg fonts-dejavu-core fonts-ebgaramond fonts-noto-core fonts-noto-cjk espeak-ng libsndfile1 wget curl
+          pip install requests cloudinary kokoro-onnx soundfile numpy fonttools "misaki[ja]" edge-tts gTTS
+          wget -q https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.int8.onnx -O kokoro-v1.0.int8.onnx
+          wget -q https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/voices-v1.0.bin -O voices-v1.0.bin
+          curl -sL "https://raw.githubusercontent.com/google/fonts/main/ofl/crimsontext/CrimsonText-Regular.ttf" -o PoetrySerif.ttf || true
+
+      - name: Run Video Render & Upload
+        env:
+          PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
+          FREESOUND_API_KEY: ${{ secrets.FREESOUND_API_KEY }}
+          CLOUDINARY_URL: ${{ secrets.CLOUDINARY_URL }}
+          MAKE_WEBHOOK_URL: ${{ secrets.MAKE_WEBHOOK_URL }}
+          PAYLOAD_JSON: ${{ toJson(github.event.client_payload) }}
+        run: python render_cloud.py
