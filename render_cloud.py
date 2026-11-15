@@ -80,6 +80,7 @@ VO_START_DELAY = 2.0        # Voiceover starts at 2.0 seconds
 EXTRA_TAIL_SECONDS = 4.0    # Extra 4.0 seconds of calm ASMR + Piano after voiceover finishes
 FADE_DURATION = 1.5         # Smooth 1.5s fade-out at the very end
 
+# Supports classic nature niches and all 11 niches from words_of_the_world_video_sheet.xlsx
 NICHE_AUDIO_MAP = {
     "rain": "gentle rain falling window ambient asmr",
     "ocean": "calm ocean waves beach water ambient",
@@ -716,39 +717,108 @@ def render_ffmpeg(piano_file, vo_duration, total_duration):
     ], check=True)
 
 
-def upload_video_with_fallback():
-    # 1. Primary: Standard Cloudinary Video Upload
+def verify_url_accessible(url):
+    """Confirms the MP4 link is publicly downloadable over HTTPS before sending to Make.com."""
+    if not url or not url.startswith("https://"):
+        return False
     try:
-        res = cloudinary.uploader.upload(
-            "final_output.mp4",
-            resource_type="video",
-            folder="auto_relaxing_videos",
-            timeout=120
-        )
-        video_url = res.get("secure_url")
-        if video_url and video_url.startswith("http"):
-            print(f"Uploaded to Cloudinary successfully: {video_url}")
-            return video_url
+        r = requests.get(url, stream=True, timeout=20, headers={"User-Agent": "Mozilla/5.0"})
+        ok = r.status_code in (200, 206)
+        r.close()
+        return ok
     except Exception as e:
-        print(f"Cloudinary upload skipped ({e}). Uploading to backup free MP4 host...")
+        print(f"URL verification failed for {url}: {e}")
+        return False
 
-    # 2. Backup 1: Litterbox (72h direct MP4 link)
-    try:
-        with open("final_output.mp4", "rb") as f:
-            r = requests.post(
-                "https://litterbox.catbox.moe/resources/internals/api.php",
-                data={"reqtype": "fileupload", "time": "72h"},
-                files={"fileToUpload": ("final_output.mp4", f, "video/mp4")},
-                timeout=60
+
+def upload_to_github_release(filepath):
+    """
+    Uses GITHUB_TOKEN to host final_output.mp4 directly on GitHub Releases CDN.
+    100% free, never blocked by ISPs, and fully supported by Instagram/Facebook APIs.
+    """
+    gh_token = os.environ.get("GITHUB_TOKEN", "").strip()
+    gh_repo = os.environ.get("GITHUB_REPOSITORY", "maaaaaaaahiuddin-code/cloud-video-engine").strip()
+    if not gh_token:
+        return ""
+
+    headers = {
+        "Authorization": f"Bearer {gh_token}",
+        "Accept": "application/vnd.github+json"
+    }
+    tag_name = "rendered-videos"
+    api_base = f"https://api.github.com/repos/{gh_repo}"
+
+    # 1. Get or create the 'rendered-videos' release
+    r = requests.get(f"{api_base}/releases/tags/{tag_name}", headers=headers, timeout=20)
+    if r.status_code == 200:
+        release_data = r.json()
+    else:
+        r_create = requests.post(
+            f"{api_base}/releases",
+            headers=headers,
+            json={
+                "tag_name": tag_name,
+                "name": "Automated Cloud Videos",
+                "body": "Hosted MP4 assets for Make.com social publishing.",
+                "draft": False,
+                "prerelease": False
+            },
+            timeout=20
+        )
+        if r_create.status_code not in (200, 201):
+            print(f"GitHub Release creation warning: {r_create.status_code} {r_create.text}")
+            return ""
+        release_data = r_create.json()
+
+    release_id = release_data.get("id")
+    asset_name = f"video_row_{row_id}_{random.randint(1000, 9999)}.mp4"
+
+    # 2. Upload the MP4 binary with Content-Type: video/mp4
+    upload_url = f"https://uploads.github.com/repos/{gh_repo}/releases/{release_id}/assets?name={asset_name}"
+    upload_headers = {
+        "Authorization": f"Bearer {gh_token}",
+        "Content-Type": "video/mp4",
+        "Accept": "application/vnd.github+json"
+    }
+    with open(filepath, "rb") as f:
+        r_up = requests.post(upload_url, headers=upload_headers, data=f, timeout=120)
+
+    if r_up.status_code in (200, 201):
+        dl_url = r_up.json().get("browser_download_url", "")
+        if verify_url_accessible(dl_url):
+            print(f"Uploaded to GitHub Releases CDN successfully: {dl_url}")
+            return dl_url
+    else:
+        print(f"GitHub Release asset upload warning: {r_up.status_code} {r_up.text}")
+    return ""
+
+
+def upload_video_with_fallback():
+    # 1. Primary: Cloudinary Video Upload (if CLOUDINARY_URL secret is valid)
+    if os.environ.get("CLOUDINARY_URL", "").startswith("cloudinary://"):
+        try:
+            res = cloudinary.uploader.upload(
+                "final_output.mp4",
+                resource_type="video",
+                folder="auto_relaxing_videos",
+                timeout=120
             )
-        if r.status_code == 200 and r.text.strip().startswith("http"):
-            url = r.text.strip()
-            print(f"Uploaded to Litterbox successfully: {url}")
-            return url
-    except Exception as e2:
-        print(f"Litterbox backup failed: {e2}")
+            video_url = res.get("secure_url", "")
+            if verify_url_accessible(video_url):
+                print(f"Uploaded to Cloudinary successfully: {video_url}")
+                return video_url
+        except Exception as e:
+            print(f"Cloudinary upload skipped ({e}). Trying GitHub Release CDN...")
 
-    # 3. Backup 2: tmpfiles.org (Direct download URL for Make.com)
+    # 2. Backup 1: GitHub Releases CDN (Fast, global HTTPS, never blocked by ISPs or Meta)
+    try:
+        gh_url = upload_to_github_release("final_output.mp4")
+        if gh_url:
+            return gh_url
+    except Exception as e_gh:
+        print(f"GitHub Release upload skipped: {e_gh}")
+
+    # 3. Backup 2: tmpfiles.org with forced HTTPS direct download link
     try:
         with open("final_output.mp4", "rb") as f:
             r = requests.post(
@@ -758,28 +828,46 @@ def upload_video_with_fallback():
             )
         if r.status_code == 200:
             raw_url = r.json().get("data", {}).get("url", "")
-            if raw_url.startswith("http"):
-                direct_url = raw_url.replace("tmpfiles.org/", "tmpfiles.org/dl/", 1)
-                print(f"Uploaded to tmpfiles.org successfully: {direct_url}")
-                return direct_url
-    except Exception as e3:
-        print(f"tmpfiles backup failed: {e3}")
+            if raw_url:
+                direct_url = raw_url.replace("http://", "https://", 1).replace("tmpfiles.org/", "tmpfiles.org/dl/", 1)
+                if verify_url_accessible(direct_url):
+                    print(f"Uploaded to tmpfiles.org (HTTPS) successfully: {direct_url}")
+                    return direct_url
+    except Exception as e_tmp:
+        print(f"tmpfiles backup failed: {e_tmp}")
 
-    # 4. Backup 3: Catbox.moe
+    # 4. Backup 3: 0x0.st direct HTTPS MP4 host
     try:
         with open("final_output.mp4", "rb") as f:
             r = requests.post(
-                "https://catbox.moe/user/api.php",
-                data={"reqtype": "fileupload"},
+                "https://0x0.st",
+                files={"file": ("final_output.mp4", f, "video/mp4")},
+                headers={"User-Agent": "CloudVideoRenderer/1.0"},
+                timeout=60
+            )
+        if r.status_code == 200 and r.text.strip().startswith("https://"):
+            url = r.text.strip()
+            if verify_url_accessible(url):
+                print(f"Uploaded to 0x0.st successfully: {url}")
+                return url
+    except Exception as e_0x0:
+        print(f"0x0.st backup failed: {e_0x0}")
+
+    # 5. Backup 4: Litterbox (72h direct MP4 link)
+    try:
+        with open("final_output.mp4", "rb") as f:
+            r = requests.post(
+                "https://litterbox.catbox.moe/resources/internals/api.php",
+                data={"reqtype": "fileupload", "time": "72h"},
                 files={"fileToUpload": ("final_output.mp4", f, "video/mp4")},
                 timeout=60
             )
-        if r.status_code == 200 and r.text.strip().startswith("http"):
+        if r.status_code == 200 and r.text.strip().startswith("https://"):
             url = r.text.strip()
-            print(f"Uploaded to Catbox successfully: {url}")
+            print(f"Uploaded to Litterbox successfully: {url}")
             return url
-    except Exception as e4:
-        print(f"Catbox backup failed: {e4}")
+    except Exception as e_lit:
+        print(f"Litterbox backup failed: {e_lit}")
 
     return ""
 
